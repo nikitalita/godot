@@ -139,13 +139,13 @@ jobs:
       - name: Export imported GLB as GLTF
       # We sleep for 10 seconds here to avoid issues with XVFB not releasing resources in time for the next run
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf || true
           sleep 10s
 
       # Open the editor to import the exported GLTF scene
       - name: Open editor and import GLTF
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf 
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf || true
 
       # Run project with GLTF scene, and capture 
       - name: Run project and take GLTF export reference screenshot
