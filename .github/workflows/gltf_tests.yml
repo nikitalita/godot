@@ -6,7 +6,7 @@ env:
   GODOT_BASE_BRANCH: master
   SCONSFLAGS: platform=linuxbsd verbose=yes warnings=extra werror=yes debug_symbols=no --jobs=2 module_text_server_fb_enabled=yes
   SCONS_CACHE_LIMIT: 4096
-  GODOT_BIN: bin/godot.linuxbsd.opt.tools.64
+  GODOT_BIN: bin/godot.linuxbsd.opt.tools.64.llvm
 jobs:
   linux-GLTF-Test:
     runs-on: "ubuntu-20.04"
@@ -31,7 +31,7 @@ jobs:
 
       # Upload cache on completion and check it out now
       - name: Load .scons_cache directory
-        id: linux-sanitizers-cache
+        id: linux-editor-cache
         uses: actions/cache@v2
         with:
           path: ${{github.workspace}}/.scons_cache/
@@ -59,12 +59,11 @@ jobs:
           scons --version
 
       # We should always be explicit with our flags usage here since it's gonna be sure to always set those flags
-      # [Workaround] SwiftShader doesn't support tessellation, so we skip Godot check about it
-      - name: Compilation
+      - name: Compilation with LLVM
         env:
           SCONS_CACHE: ${{github.workspace}}/.scons_cache/
         run: |
-          scons tools=yes tests=yes target=release_debug debug_symbols=no use_asan=yes use_ubsan=yes
+          scons tools=yes tests=yes target=release_debug debug_symbols=no use_asan=yes use_ubsan=yes use_llvm=yes
           ls -l bin/
 
       # Download, unzip and setup SwiftShader library [d4550ab8d3f]
