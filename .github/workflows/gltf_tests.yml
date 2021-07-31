@@ -77,6 +77,21 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: "ubuntu-20.04"
     steps:
+      # Azure repositories are not reliable, we need to prevent azure giving us packages.
+      - name: Make apt sources.list use the default Ubuntu repositories
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*
+          sudo cp -f misc/ci/sources.list /etc/apt/sources.list
+          sudo apt-get update
+          echo $GODOT_BIN
+
+      # Install all packages (except scons) (including ffmpeg)
+      - name: Configure dependencies
+        run: |
+          sudo apt-get install build-essential pkg-config libx11-dev libxcursor-dev \
+            libxinerama-dev libgl1-mesa-dev libglu-dev libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm \
+            xvfb wget unzip ffmpeg llvm clang
+  
       - name: Download godot from previous job
         uses: actions/download-artifact@v2
         with:
