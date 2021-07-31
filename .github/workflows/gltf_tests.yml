@@ -8,7 +8,7 @@ env:
   SCONS_CACHE_LIMIT: 4096
   GODOT_BIN: bin/godot.linuxbsd.opt.tools.64.llvms
 jobs:
-  linux-GLTF-Test:
+  build-linux-llvm-x64-release-debug:
     runs-on: "ubuntu-20.04"
     name: Testing GLTF Export
     steps:
@@ -66,6 +66,22 @@ jobs:
           scons tools=yes tests=yes target=release_debug debug_symbols=no use_asan=yes use_ubsan=yes use_llvm=yes
           ls -l bin/
 
+      - name: upload godot build
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.job }}
+          path: bin/*
+  
+  linux-GLTF-Test:
+    needs: build-linux-llvm-x64-release-debug
+    if: ${{ github.event_name == 'push' }}
+    runs-on: "ubuntu-20.04"
+    steps:
+      - name: Download godot from previous job
+      uses: actions/download-artifact@v2
+      with:
+        name: build-linux-llvm-x64-release-debug
+        path: bin/
       # Download, unzip and setup SwiftShader library [d4550ab8d3f]
       - name: Download SwiftShader
         run: |
