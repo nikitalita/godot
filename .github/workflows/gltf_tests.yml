@@ -82,6 +82,11 @@ jobs:
         with:
           name: build-linux-llvm-x64-release-debug
           path: bin/
+
+      - name: enable execution
+        run: |
+          chmod a+x bin/*
+
       # Download, unzip and setup SwiftShader library [d4550ab8d3f]
       - name: Download SwiftShader
         run: |
