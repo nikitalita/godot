@@ -6,7 +6,7 @@ env:
   GODOT_BASE_BRANCH: master
   SCONSFLAGS: platform=linuxbsd verbose=yes warnings=extra werror=yes debug_symbols=no --jobs=2 module_text_server_fb_enabled=yes
   SCONS_CACHE_LIMIT: 4096
-  GODOT_BIN: bin/godot.linuxbsd.opt.tools.64.llvm
+  GODOT_BIN: bin/godot.linuxbsd.opt.tools.64.llvms
 jobs:
   linux-GLTF-Test:
     runs-on: "ubuntu-20.04"
@@ -85,7 +85,7 @@ jobs:
       # Open the editor to import the GLB scene
       - name: Open editor and import GLB
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run  --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 300s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf  || true
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run  --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf  || true
       
       # Run project with GLB scene, and capture 
       - name: Run project and take GLB import reference screenshot
@@ -93,7 +93,7 @@ jobs:
       # After that starts, we start ffmpeg and attach it to the screen to take continuous screenshots until godot quits
       # || echo ok is just to avoid failing the test here because ffmpeg exits with errors
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 300s $GODOT_BIN --audio-driver Dummy --path godot_gltf_tests/test_export_gltf &
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy --path godot_gltf_tests/test_export_gltf &
           mkdir -p test-output
           ffmpeg -video_size 1366x786 -framerate 1 -f x11grab -i :99 -c:v png -vsync vfr -g 50 -update 1 test-output/gltf_import.png || echo "ok"
     
@@ -101,7 +101,7 @@ jobs:
       - name: Export imported GLB as GLTF
       # We sleep for 10 seconds here to avoid issues with XVFB not releasing resources in time for the next run
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 300s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf
           sleep 10s
 
       # Open the editor to import the exported GLTF scene
@@ -112,7 +112,7 @@ jobs:
       # Run project with GLTF scene, and capture 
       - name: Run project and take GLTF export reference screenshot
         run: |
-          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 300s $GODOT_BIN --audio-driver Dummy --path godot_gltf_tests/test_export_gltf res://ToyCar-export-test.gltf &
+          VK_ICD_FILENAMES=$(pwd)/vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s $GODOT_BIN --audio-driver Dummy --path godot_gltf_tests/test_export_gltf res://ToyCar-export-test.gltf &
           mkdir -p test-output
           ffmpeg -video_size 1366x786 -framerate 1 -f x11grab -i :99 -c:v png -vsync vfr -g 50 -update 1 test-output/gltf_export.png || echo "ok"
 
