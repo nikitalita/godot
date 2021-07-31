@@ -77,6 +77,8 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: "ubuntu-20.04"
     steps:
+      - uses: actions/checkout@v2
+      
       # Azure repositories are not reliable, we need to prevent azure giving us packages.
       - name: Make apt sources.list use the default Ubuntu repositories
         run: |
