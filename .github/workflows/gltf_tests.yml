@@ -78,10 +78,10 @@ jobs:
     runs-on: "ubuntu-20.04"
     steps:
       - name: Download godot from previous job
-      uses: actions/download-artifact@v2
-      with:
-        name: build-linux-llvm-x64-release-debug
-        path: bin/
+        uses: actions/download-artifact@v2
+        with:
+          name: build-linux-llvm-x64-release-debug
+          path: bin/
       # Download, unzip and setup SwiftShader library [d4550ab8d3f]
       - name: Download SwiftShader
         run: |
