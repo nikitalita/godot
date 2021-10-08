@@ -1,0 +1,128 @@
+name: 🐧 Linux Builds
+on: [push, pull_request]
+
+# Global Settings
+env:
+  GODOT_BASE_BRANCH: master
+  SCONSFLAGS: platform=linuxbsd verbose=yes warnings=extra werror=yes debug_symbols=no --jobs=2 module_text_server_fb_enabled=yes
+  SCONS_CACHE_LIMIT: 4096
+
+jobs:
+  linux-GLTF-Test:
+    runs-on: "ubuntu-20.04"
+    name: Editor and sanitizers (target=debug, tools=yes, tests=yes, use_asan=yes, use_ubsan=yes)
+    steps:
+      - uses: actions/checkout@v2
+
+      # Azure repositories are not reliable, we need to prevent azure giving us packages.
+      - name: Make apt sources.list use the default Ubuntu repositories
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*
+          sudo cp -f misc/ci/sources.list /etc/apt/sources.list
+          sudo apt-get update
+
+      # Install all packages (except scons) (including ffmpeg)
+      - name: Configure dependencies
+        run: |
+          sudo apt-get install build-essential pkg-config libx11-dev libxcursor-dev \
+            libxinerama-dev libgl1-mesa-dev libglu-dev libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev yasm \
+            xvfb wget unzip ffmpeg
+
+      # Upload cache on completion and check it out now
+      - name: Load .scons_cache directory
+        id: linux-sanitizers-cache
+        uses: actions/cache@v2
+        with:
+          path: ${{github.workspace}}/.scons_cache/
+          key: ${{github.job}}-${{env.GODOT_BASE_BRANCH}}-${{github.ref}}-${{github.sha}}
+          restore-keys: |
+            ${{github.job}}-${{env.GODOT_BASE_BRANCH}}-${{github.ref}}-${{github.sha}}
+            ${{github.job}}-${{env.GODOT_BASE_BRANCH}}-${{github.ref}}
+            ${{github.job}}-${{env.GODOT_BASE_BRANCH}}
+
+      # Use python 3.x release (works cross platform; best to keep self contained in it's own step)
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v2
+        with:
+          # Semantic version range syntax or exact version of a Python version
+          python-version: '3.x'
+          # Optional - x64 or x86 architecture, defaults to x64
+          architecture: 'x64'
+
+      # Setup scons, print python version and scons version info, so if anything is broken it won't run the build.
+      - name: Configuring Python packages
+        run: |
+          python -c "import sys; print(sys.version)"
+          python -m pip install scons
+          python --version
+          scons --version
+
+      # We should always be explicit with our flags usage here since it's gonna be sure to always set those flags
+      # [Workaround] SwiftShader doesn't support tessellation, so we skip Godot check about it
+      - name: Compilation
+        env:
+          SCONS_CACHE: ${{github.workspace}}/.scons_cache/
+        run: |
+          sed -i "s|ERR_FAIL_COND_V(p_rasterization_state.patch_control_points|//ERR_FAIL_COND_V(p_rasterization_state.patch_control_points|" drivers/vulkan/rendering_device_vulkan.cpp
+          scons tools=yes tests=yes target=debug debug_symbols=no use_asan=yes use_ubsan=yes
+          ls -l bin/
+
+      # Download, unzip and setup SwiftShader library [d4550ab8d3f]
+      - name: Download SwiftShader
+        run: |
+          wget https://github.com/qarmin/gtk_library_store/releases/download/3.24.0/swiftshader.zip
+          unzip swiftshader.zip
+          rm swiftshader.zip
+          curr="$(pwd)/libvk_swiftshader.so"
+          sed -i "s|PATH_TO_CHANGE|$curr|" vk_swiftshader_icd.json
+
+      # Download and extract zip archive with project, folder is renamed to be able to easy change used project
+      - name: Download test project
+        run: |
+          wget https://github.com/nikitalita/godot_gltf_tests/archive/refs/heads/main.zip
+          unzip main.zip
+          mv godot_gltf_tests-* godot_gltf_tests/
+
+      # Open the editor to import the GLB scene
+      - name: Open editor and import GLB
+        run: |
+          VK_ICD_FILENAMES=vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" bin/godot.linuxbsd.tools.64s --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf 
+      
+      # Run project with GLB scene, and capture 
+      - name: Run project and take GLB import reference screenshot
+      # We run godot in the background with a timeout set to 120s, so that it has time to fully load the scene
+      # After that starts, we start ffmpeg and attach it to the screen to take continuous screenshots until godot quits
+      # || echo ok is just to avoid failing the test here because ffmpeg exits with errors
+        run: |
+          VK_ICD_FILENAMES=vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s bin/godot.linuxbsd.opt.tools.64.llvm --audio-driver Dummy --path godot_gltf_tests/test_export_gltf &
+          mkdir -p test-output
+          ffmpeg -video_size 1366x786 -framerate 1 -f x11grab -i :99 -c:v png -vsync vfr -g 50 -update 1 test-output/gltf_import.png || echo "ok"
+    
+      # Run the godot script to export the GLB scene as a GLTF
+      - name: Export imported GLB as GLTF
+      # We sleep for 10 seconds here to avoid issues with XVFB not releasing resources in time for the next run
+        run: |
+          VK_ICD_FILENAMES=vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" bin/godot.linuxbsd.tools.64s --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf
+          sleep 10s
+
+      # Open the editor to import the exported GLTF scene
+      - name: Open editor and import GLTF
+        run: |
+          VK_ICD_FILENAMES=vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" bin/godot.linuxbsd.tools.64s --audio-driver Dummy -e -q --path godot_gltf_tests/test_export_gltf 
+
+      # Run project with GLTF scene, and capture 
+      - name: Run project and take GLTF export reference screenshot
+        run: |
+          VK_ICD_FILENAMES=vk_swiftshader_icd.json DRI_PRIME=0 xvfb-run --server-args="-screen 0 1366x786x24 -ac -nolisten tcp -dpi 96" timeout 120s bin/godot.linuxbsd.opt.tools.64.llvm --audio-driver Dummy --path godot_gltf_tests/test_export_gltf res://ToyCar-export-test.gltf &
+          mkdir -p test-output
+          ffmpeg -video_size 1366x786 -framerate 1 -f x11grab -i :99 -c:v png -vsync vfr -g 50 -update 1 test-output/gltf_export.png || echo "ok"
+
+      # Moment of truth, diff the screenshots and check if they are identical
+      - name: Check reference screenshots diff
+        run: |
+          idiff test-output/gltf_import.png test-output/gltf_export.png -o test-output/test-diff.png
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.job }}
+          path: test-output/*
