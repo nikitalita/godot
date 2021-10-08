@@ -39,14 +39,16 @@ jobs:
         repository: mesa3d/mesa
         path: mesa
         ref: 0a592db57360a7847ca9c57e47f6200a2992f2e9
-
     #TODO: Keep this?
-    #  echo 'deb-src http://azure.archive.ubuntu.com/ubuntu focal main' | sudo tee -a /etc/apt/sources.list
-    #  echo 'deb-src http://azure.archive.ubuntu.com/ubuntu focal-updates main' | sudo tee -a /etc/apt/sources.list
     - name: build lavapipe
       if: steps.cache-lavapipe.outputs.cache-hit != 'true'
+      #includes the deb-src from the OFFICIAL ubuntu repositories
       run: |
         mkdir -p "$GITHUB_WORKSPACE/lavapipe-install"
+        echo 'deb-src http://archive.ubuntu.com/ubuntu focal main' | sudo tee -a /etc/apt/sources.list
+        echo 'deb-src http://archive.ubuntu.com/ubuntu focal-updates main' | sudo tee -a /etc/apt/sources.list
+        echo 'deb-src http://archive.ubuntu.com/ubuntu focal-security main' | sudo tee -a /etc/apt/sources.list
+        echo 'deb-src http://archive.ubuntu.com/ubuntu focal-backports main' | sudo tee -a /etc/apt/sources.list
         sudo apt-get update
         sudo apt-get build-dep mesa
         cd mesa
