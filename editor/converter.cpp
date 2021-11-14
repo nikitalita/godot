@@ -1659,12 +1659,12 @@ Vector<String> GodotConverter4::check_for_files() {
 		String path = directories_to_check.get(directories_to_check.size() - 1); // Is there any pop_back function?
 		directories_to_check.resize(directories_to_check.size() - 1); // Remove last element
 		if (dir.open(path) == OK) {
-			dir.list_dir_begin();
+			dir.list_dir_begin(false, true);
 			String current_dir = dir.get_current_dir();
 			String file_name = dir.get_next();
 
 			while (file_name != "") {
-				if (file_name == ".." || file_name == "." || file_name == "." || file_name == ".git" || file_name == ".import" || file_name == ".godot") {
+				if (file_name == ".git" || file_name == ".import" || file_name == ".godot") {
 					file_name = dir.get_next();
 					continue;
 				}
@@ -1745,6 +1745,10 @@ bool GodotConverter4::test_conversion() {
 
 	valid = valid & test_conversion_single_additional("\tvar aa = roman(r.move_and_slide( a, b, c, d, e, f )) # Roman", "\tr.set_motion_velocity(a)\n\tr.set_up_direction(b)\n\tr.set_floor_stop_on_slope_enabled(c)\n\tr.set_max_slides(d)\n\tr.set_floor_max_angle(e)\n\t# TODOConverter40 infinite_inertia were removed in Godot 4.0 - previous value `f`\n\tvar aa = roman(r.move_and_slide()) # Roman", &GodotConverter4::rename_gdscript_functions, "custom rename");
 	valid = valid & test_conversion_single_additional("\tvar aa = roman(r.move_and_slide_with_snap( a, g, b, c, d, e, f )) # Roman", "\tr.set_motion_velocity(a)\n\t# TODOConverter40 looks that snap in Godot 4.0 is float, not vector like in Godot 3 - previous value `g`\n\tr.set_up_direction(b)\n\tr.set_floor_stop_on_slope_enabled(c)\n\tr.set_max_slides(d)\n\tr.set_floor_max_angle(e)\n\t# TODOConverter40 infinite_inertia were removed in Godot 4.0 - previous value `f`\n\tvar aa = roman(r.move_and_slide()) # Roman", &GodotConverter4::rename_gdscript_functions, "custom rename");
+
+	valid = valid & test_conversion_single_additional("list_dir_begin( a , b )", "list_dir_begin(!(a),!(b))", &GodotConverter4::rename_gdscript_functions, "custom rename");
+	valid = valid & test_conversion_single_additional("list_dir_begin( a )", "list_dir_begin(!(a),true)", &GodotConverter4::rename_gdscript_functions, "custom rename");
+	valid = valid & test_conversion_single_additional("list_dir_begin( )", "list_dir_begin(true,true)", &GodotConverter4::rename_gdscript_functions, "custom rename");
 
 	valid = valid & test_conversion_single_additional("sort_custom( a , b )", "sort_custom(Callable(a,b))", &GodotConverter4::rename_gdscript_functions, "custom rename");
 
@@ -2018,7 +2022,7 @@ bool GodotConverter4::test_array_names() {
 			//			// DEBUG, disable below after tests
 			//			if (all_functions.has(gdscript_function_renames[current_element][0])) {
 			//				String used_in_classes = "";
-
+			//
 			//				for (StringName &name_of_class : classes_list) {
 			//					List<MethodInfo> method_list;
 			//					ClassDB::get_method_list(name_of_class, &method_list, true);
@@ -2038,7 +2042,7 @@ bool GodotConverter4::test_array_names() {
 			//					}
 			//				}
 			//				used_in_classes = used_in_classes.trim_suffix(", ");
-
+			//
 			//				WARN_PRINT(String("Godot contains function which will be renamed in pair ( ===> ") + gdscript_function_renames[current_element][0] + " <=== - " + gdscript_function_renames[current_element][1] + ") in class " + used_in_classes + " - check for possible invalid rule.");
 			//			}
 			current_element++;
@@ -2577,6 +2581,22 @@ void GodotConverter4::rename_gdscript_functions(String &file_content) {
 				Vector<String> parts = parse_arguments(line.substr(start, end));
 				if (parts.size() == 2) {
 					line = line.substr(0, start) + "sort_custom(Callable(" + parts[0] + "," + parts[1] + "))" + line.substr(end + start);
+				}
+			}
+		}
+
+		// -- list_dir_begin( )  ->  list_dir_begin(true, true)            Object
+		if (line.find("list_dir_begin(") != -1) {
+			int start = line.find("list_dir_begin(");
+			int end = get_end_parenthess(line.substr(start)) + 1;
+			if (end > -1) {
+				Vector<String> parts = parse_arguments(line.substr(start, end));
+				if (parts.size() == 0) {
+					line = line.substr(0, start) + "list_dir_begin(true,true)" + line.substr(end + start);
+				} else if (parts.size() == 1) {
+					line = line.substr(0, start) + "list_dir_begin(!(" + parts[0] + "),true)" + line.substr(end + start);
+				} else if (parts.size() == 2) {
+					line = line.substr(0, start) + "list_dir_begin(!(" + parts[0] + "),!(" + parts[1] + "))" + line.substr(end + start);
 				}
 			}
 		}
