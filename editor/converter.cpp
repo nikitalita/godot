@@ -1791,8 +1791,7 @@ bool GodotConverter4::test_conversion() {
 	valid = valid & test_conversion_single_additional("yield(this, \"timeout\")", "await this.timeout", &GodotConverter4::rename_gdscript_functions, "custom rename");
 
 	valid = valid & test_conversion_single_additional(" Transform.xform(Vector3(a,b,c)) ", " Transform * Vector3(a,b,c) ", &GodotConverter4::rename_gdscript_functions, "custom rename");
-
-	valid = valid & test_conversion_single_additional(" Transform.xform_inv(Vector3(a,b,c)) ", " Transform / Vector3(a,b,c) ", &GodotConverter4::rename_gdscript_functions, "custom rename"); // TODO, it is valid?
+	valid = valid & test_conversion_single_additional(" Transform.xform_inv(Vector3(a,b,c)) ", " Vector3(a,b,c) * Transform ", &GodotConverter4::rename_gdscript_functions, "custom rename");
 
 	valid = valid & test_conversion_single_additional("export(float) var lifetime = 3.0", "export var lifetime: float = 3.0", &GodotConverter4::rename_gdscript_functions, "custom rename");
 	valid = valid & test_conversion_single_additional("export(String, 'AnonymousPro', 'CourierPrime') var _font_name = 'AnonymousPro'", "export var _font_name = 'AnonymousPro' # (String, 'AnonymousPro', 'CourierPrime')", &GodotConverter4::rename_gdscript_functions, "custom rename"); // TODO, this is only a workaround
@@ -2666,14 +2665,18 @@ void GodotConverter4::rename_gdscript_functions(String &file_content) {
 			}
 		}
 
-		// -- .xform_inv(Vector3(a,b,c)) -> / Vector3(a,b,c)       Transform
+		// -- .xform_inv(Vector3(a,b,c)) -> * Vector3(a,b,c)       Transform
 		if (line.find(".xform_inv(") != -1) {
 			int start = line.find(".xform_inv(");
 			int end = get_end_parenthess(line.substr(start)) + 1;
 			if (end > -1) {
-				Vector<String> parts = parse_arguments(line.substr(start, end));
-				if (parts.size() == 1) {
-					line = line.substr(0, start) + " / " + parts[0] + line.substr(end + start);
+				String object_exec = get_object_of_execution(line.substr(0, start));
+				if (line.find(object_exec + ".xform") != -1) {
+					int start2 = line.find(object_exec + ".xform");
+					Vector<String> parts = parse_arguments(line.substr(start, end));
+					if (parts.size() == 1) {
+						line = line.substr(0, start2) + parts[0] + " * " + object_exec + line.substr(end + start);
+					}
 				}
 			}
 		}
