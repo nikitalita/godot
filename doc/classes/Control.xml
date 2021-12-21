@@ -102,6 +102,7 @@
 			<description>
 				Virtual method to be implemented by the user. Returns the minimum size for this control. Alternative to [member rect_min_size] for controlling minimum size via code. The actual minimum size will be the max value of these two (in each axis separately).
 				If not overridden, defaults to [constant Vector2.ZERO].
+				[b]Note:[/b] This method will not be called when the script is attached to a [Control] node that already overrides its minimum size (e.g. [Label], [Button], [PanelContainer] etc.). It can only be used with most basic GUI nodes, like [Control], [Container], [Panel] etc.
 			</description>
 		</method>
 		<method name="_gui_input" qualifiers="virtual">
@@ -666,12 +667,6 @@
 				Returns [code]true[/code] if layout is right-to-left.
 			</description>
 		</method>
-		<method name="minimum_size_changed">
-			<return type="void" />
-			<description>
-				Invalidates the size cache in this node and in parent nodes up to top_level. Intended to be used with [method get_minimum_size] when the return value is changed. Setting [member rect_min_size] directly calls this method automatically.
-			</description>
-		</method>
 		<method name="release_focus">
 			<return type="void" />
 			<description>
@@ -931,6 +926,12 @@
 			<description>
 				Sets the size (see [member rect_size]).
 				If [code]keep_offsets[/code] is [code]true[/code], control's anchors will be updated instead of offsets.
+			</description>
+		</method>
+		<method name="update_minimum_size">
+			<return type="void" />
+			<description>
+				Invalidates the size cache in this node and in parent nodes up to top level. Intended to be used with [method get_minimum_size] when the return value is changed. Setting [member rect_min_size] directly calls this method automatically.
 			</description>
 		</method>
 		<method name="warp_mouse">

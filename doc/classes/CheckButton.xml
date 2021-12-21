@@ -10,8 +10,8 @@
 	<tutorials>
 	</tutorials>
 	<members>
-		<member name="align" type="int" setter="set_text_align" getter="get_text_align" override="true" enum="Button.TextAlign" default="0" />
-		<member name="toggle_mode" type="bool" setter="set_toggle_mode" getter="is_toggle_mode" override="true" default="true" />
+		<member name="alignment" type="int" setter="set_text_alignment" getter="get_text_alignment" overrides="Button" enum="HorizontalAlignment" default="0" />
+		<member name="toggle_mode" type="bool" setter="set_toggle_mode" getter="is_toggle_mode" overrides="BaseButton" default="true" />
 	</members>
 	<theme_items>
 		<theme_item name="font_color" data_type="color" type="Color" default="Color(0.88, 0.88, 0.88, 1)">
@@ -78,7 +78,7 @@
 			The [StyleBox] to display as a background when the [CheckButton] is disabled.
 		</theme_item>
 		<theme_item name="focus" data_type="style" type="StyleBox">
-			The [StyleBox] to display as a background when the [CheckButton] is focused.
+			The [StyleBox] to display as a background when the [CheckButton] is focused. The [code]focus[/code] [StyleBox] is displayed [i]over[/i] the base [StyleBox], so a partially transparent [StyleBox] should be used to ensure the base [StyleBox] remains visible. A [StyleBox] that represents an outline or an underline works well for this purpose. To disable the focus visual effect, assign a [StyleBoxEmpty] resource. Note that disabling the focus visual effect will harm keyboard/controller navigation usability, so this is not recommended for accessibility reasons.
 		</theme_item>
 		<theme_item name="hover" data_type="style" type="StyleBox">
 			The [StyleBox] to display as a background when the [CheckButton] is hovered.

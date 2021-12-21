@@ -467,6 +467,16 @@ Error OS_Windows::execute(const String &p_path, const List<String> &p_arguments,
 	return OK;
 };
 
+bool OS_Windows::_is_win11_terminal() const {
+	HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD dwMode = 0;
+	if (GetConsoleMode(hStdOut, &dwMode)) {
+		return ((dwMode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) == ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	} else {
+		return false;
+	}
+}
+
 Error OS_Windows::create_process(const String &p_path, const List<String> &p_arguments, ProcessID *r_child_id) {
 	String path = p_path.replace("/", "\\");
 	String command = _quote_command_line_argument(path);
@@ -484,6 +494,10 @@ Error OS_Windows::create_process(const String &p_path, const List<String> &p_arg
 #ifndef DEBUG_ENABLED
 	dwCreationFlags |= CREATE_NO_WINDOW;
 #endif
+	if (p_path == get_executable_path() && GetConsoleWindow() != nullptr && _is_win11_terminal()) {
+		// Open a new terminal as a workaround for Windows Terminal bug.
+		dwCreationFlags |= CREATE_NEW_CONSOLE;
+	}
 
 	int ret = CreateProcessW(nullptr, (LPWSTR)(command.utf16().ptrw()), nullptr, nullptr, false, dwCreationFlags, nullptr, nullptr, si_w, &pi.pi);
 	ERR_FAIL_COND_V_MSG(ret == 0, ERR_CANT_FORK, "Could not create child process: " + command);
@@ -606,7 +620,7 @@ String OS_Windows::get_locale() const {
 		wl++;
 	}
 
-	if (neutral != "")
+	if (!neutral.is_empty())
 		return String(neutral).replace("-", "_");
 
 	return "en";
@@ -757,11 +771,11 @@ String OS_Windows::get_system_dir(SystemDir p_dir, bool p_shared_storage) const 
 
 String OS_Windows::get_user_data_dir() const {
 	String appname = get_safe_dir_name(ProjectSettings::get_singleton()->get("application/config/name"));
-	if (appname != "") {
+	if (!appname.is_empty()) {
 		bool use_custom_dir = ProjectSettings::get_singleton()->get("application/config/use_custom_user_dir");
 		if (use_custom_dir) {
 			String custom_dir = get_safe_dir_name(ProjectSettings::get_singleton()->get("application/config/custom_user_dir_name"), true);
-			if (custom_dir == "") {
+			if (custom_dir.is_empty()) {
 				custom_dir = appname;
 			}
 			return get_data_path().plus_file(custom_dir).replace("\\", "/");

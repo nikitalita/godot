@@ -941,7 +941,7 @@ ThemeItemImportTree::ThemeItemImportTree() {
 
 	ScrollContainer *import_bulk_sc = memnew(ScrollContainer);
 	import_bulk_sc->set_custom_minimum_size(Size2(260.0, 0.0) * EDSCALE);
-	import_bulk_sc->set_enable_h_scroll(false);
+	import_bulk_sc->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	import_main_hb->add_child(import_bulk_sc);
 	VBoxContainer *import_bulk_vb = memnew(VBoxContainer);
 	import_bulk_vb->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -1115,7 +1115,7 @@ ThemeItemImportTree::ThemeItemImportTree() {
 		label_set->add_child(select_items_label);
 
 		HBoxContainer *button_set = memnew(HBoxContainer);
-		button_set->set_alignment(BoxContainer::ALIGN_END);
+		button_set->set_alignment(BoxContainer::ALIGNMENT_END);
 		all_set->add_child(button_set);
 		select_all_items_button->set_flat(true);
 		select_all_items_button->set_tooltip(select_all_items_tooltip);
@@ -1130,7 +1130,7 @@ ThemeItemImportTree::ThemeItemImportTree() {
 		button_set->add_child(deselect_all_items_button);
 		deselect_all_items_button->connect("pressed", callable_mp(this, &ThemeItemImportTree::_deselect_all_data_type_pressed), varray(i));
 
-		total_selected_items_label->set_align(Label::ALIGN_RIGHT);
+		total_selected_items_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_RIGHT);
 		total_selected_items_label->hide();
 		import_bulk_vb->add_child(total_selected_items_label);
 
@@ -1783,7 +1783,7 @@ ThemeItemEditorDialog::ThemeItemEditorDialog() {
 	set_hide_on_ok(false); // Closing may require a confirmation in some cases.
 
 	tc = memnew(TabContainer);
-	tc->set_tab_align(TabContainer::TabAlign::ALIGN_LEFT);
+	tc->set_tab_alignment(TabContainer::ALIGNMENT_LEFT);
 	add_child(tc);
 
 	// Edit Items tab.
@@ -1909,8 +1909,8 @@ ThemeItemEditorDialog::ThemeItemEditorDialog() {
 	edit_items_message = memnew(Label);
 	edit_items_message->set_anchors_and_offsets_preset(Control::PRESET_WIDE);
 	edit_items_message->set_mouse_filter(Control::MOUSE_FILTER_STOP);
-	edit_items_message->set_align(Label::ALIGN_CENTER);
-	edit_items_message->set_valign(Label::VALIGN_CENTER);
+	edit_items_message->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	edit_items_message->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
 	edit_items_message->set_autowrap_mode(Label::AUTOWRAP_WORD);
 	edit_items_tree->add_child(edit_items_message);
 
@@ -1996,7 +1996,7 @@ void ThemeTypeDialog::_dialog_about_to_show() {
 }
 
 void ThemeTypeDialog::ok_pressed() {
-	emit_signal(SNAME("type_selected"), add_type_filter->get_text().strip_edges());
+	_add_type_selected(add_type_filter->get_text().strip_edges());
 }
 
 void ThemeTypeDialog::_update_add_type_options(const String &p_filter) {
@@ -2042,12 +2042,25 @@ void ThemeTypeDialog::_add_type_options_cbk(int p_index) {
 }
 
 void ThemeTypeDialog::_add_type_dialog_entered(const String &p_value) {
-	emit_signal(SNAME("type_selected"), p_value.strip_edges());
-	hide();
+	_add_type_selected(p_value.strip_edges());
 }
 
 void ThemeTypeDialog::_add_type_dialog_activated(int p_index) {
-	emit_signal(SNAME("type_selected"), add_type_options->get_item_text(p_index));
+	_add_type_selected(add_type_options->get_item_text(p_index));
+}
+
+void ThemeTypeDialog::_add_type_selected(const String &p_type_name) {
+	pre_submitted_value = p_type_name;
+	if (p_type_name.is_empty()) {
+		add_type_confirmation->popup_centered();
+		return;
+	}
+
+	_add_type_confirmed();
+}
+
+void ThemeTypeDialog::_add_type_confirmed() {
+	emit_signal(SNAME("type_selected"), pre_submitted_value);
 	hide();
 }
 
@@ -2082,11 +2095,13 @@ void ThemeTypeDialog::set_include_own_types(bool p_enable) {
 }
 
 ThemeTypeDialog::ThemeTypeDialog() {
+	set_hide_on_ok(false);
+
 	VBoxContainer *add_type_vb = memnew(VBoxContainer);
 	add_child(add_type_vb);
 
 	Label *add_type_filter_label = memnew(Label);
-	add_type_filter_label->set_text(TTR("Name:"));
+	add_type_filter_label->set_text(TTR("Filter the list of types or create a new custom type:"));
 	add_type_vb->add_child(add_type_filter_label);
 
 	add_type_filter = memnew(LineEdit);
@@ -2095,7 +2110,7 @@ ThemeTypeDialog::ThemeTypeDialog() {
 	add_type_filter->connect("text_submitted", callable_mp(this, &ThemeTypeDialog::_add_type_dialog_entered));
 
 	Label *add_type_options_label = memnew(Label);
-	add_type_options_label->set_text(TTR("Node Types:"));
+	add_type_options_label->set_text(TTR("Available Node-based types:"));
 	add_type_vb->add_child(add_type_options_label);
 
 	add_type_options = memnew(ItemList);
@@ -2103,6 +2118,12 @@ ThemeTypeDialog::ThemeTypeDialog() {
 	add_type_vb->add_child(add_type_options);
 	add_type_options->connect("item_selected", callable_mp(this, &ThemeTypeDialog::_add_type_options_cbk));
 	add_type_options->connect("item_activated", callable_mp(this, &ThemeTypeDialog::_add_type_dialog_activated));
+
+	add_type_confirmation = memnew(ConfirmationDialog);
+	add_type_confirmation->set_title(TTR("Type name is empty!"));
+	add_type_confirmation->set_text(TTR("Are you sure you want to create an empty type?"));
+	add_type_confirmation->connect("confirmed", callable_mp(this, &ThemeTypeDialog::_add_type_confirmed));
+	add_child(add_type_confirmation);
 }
 
 VBoxContainer *ThemeTypeEditor::_create_item_list(Theme::DataType p_data_type) {
@@ -2113,7 +2134,7 @@ VBoxContainer *ThemeTypeEditor::_create_item_list(Theme::DataType p_data_type) {
 
 	ScrollContainer *items_sc = memnew(ScrollContainer);
 	items_sc->set_v_size_flags(SIZE_EXPAND_FILL);
-	items_sc->set_enable_h_scroll(false);
+	items_sc->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	items_tab->add_child(items_sc);
 	VBoxContainer *items_list = memnew(VBoxContainer);
 	items_list->set_h_size_flags(SIZE_EXPAND_FILL);
@@ -2603,6 +2624,7 @@ void ThemeTypeEditor::_list_type_selected(int p_index) {
 void ThemeTypeEditor::_add_type_button_cbk() {
 	add_type_mode = ADD_THEME_TYPE;
 	add_type_dialog->set_title(TTR("Add Item Type"));
+	add_type_dialog->get_ok_button()->set_text(TTR("Add Type"));
 	add_type_dialog->set_include_own_types(false);
 	add_type_dialog->popup_centered(Size2(560, 420) * EDSCALE);
 }
@@ -2969,7 +2991,8 @@ void ThemeTypeEditor::_type_variation_changed(const String p_value) {
 
 void ThemeTypeEditor::_add_type_variation_cbk() {
 	add_type_mode = ADD_VARIATION_BASE;
-	add_type_dialog->set_title(TTR("Add Variation Base Type"));
+	add_type_dialog->set_title(TTR("Set Variation Base Type"));
+	add_type_dialog->get_ok_button()->set_text(TTR("Set Base Type"));
 	add_type_dialog->set_include_own_types(true);
 	add_type_dialog->popup_centered(Size2(560, 420) * EDSCALE);
 }
@@ -3102,7 +3125,7 @@ ThemeTypeEditor::ThemeTypeEditor() {
 
 	ScrollContainer *type_settings_sc = memnew(ScrollContainer);
 	type_settings_sc->set_v_size_flags(SIZE_EXPAND_FILL);
-	type_settings_sc->set_enable_h_scroll(false);
+	type_settings_sc->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	type_settings_tab->add_child(type_settings_sc);
 	VBoxContainer *type_settings_list = memnew(VBoxContainer);
 	type_settings_list->set_h_size_flags(SIZE_EXPAND_FILL);
@@ -3129,7 +3152,7 @@ ThemeTypeEditor::ThemeTypeEditor() {
 
 	type_variation_locked = memnew(Label);
 	type_variation_vb->add_child(type_variation_locked);
-	type_variation_locked->set_align(Label::ALIGN_CENTER);
+	type_variation_locked->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	type_variation_locked->set_autowrap_mode(Label::AUTOWRAP_WORD);
 	type_variation_locked->set_text(TTR("A type associated with a built-in class cannot be marked as a variation of another type."));
 	type_variation_locked->hide();
@@ -3329,7 +3352,7 @@ ThemeEditor::ThemeEditor() {
 	preview_tabs_vb->add_child(preview_tabs_content);
 
 	preview_tabs = memnew(TabBar);
-	preview_tabs->set_tab_align(TabBar::ALIGN_LEFT);
+	preview_tabs->set_tab_alignment(TabBar::ALIGNMENT_LEFT);
 	preview_tabs->set_h_size_flags(SIZE_EXPAND_FILL);
 	preview_tabbar_hb->add_child(preview_tabs);
 	preview_tabs->connect("tab_changed", callable_mp(this, &ThemeEditor::_change_preview_tab));

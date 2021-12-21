@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  proximity_group_3d.h                                                 */
+/*  editor_translation.cpp                                               */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -28,58 +28,72 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#ifndef PROXIMITY_GROUP_H
-#define PROXIMITY_GROUP_H
+#include "editor/editor_translation.h"
 
-#include "node_3d.h"
+#include "core/io/compression.h"
+#include "core/io/file_access_memory.h"
+#include "core/io/translation_loader_po.h"
+#include "editor/doc_translations.gen.h"
+#include "editor/editor_translations.gen.h"
 
-class ProximityGroup3D : public Node3D {
-	GDCLASS(ProximityGroup3D, Node3D);
+Vector<String> get_editor_locales() {
+	Vector<String> locales;
 
-public:
-	enum DispatchMode {
-		MODE_PROXY,
-		MODE_SIGNAL,
-	};
+	EditorTranslationList *etl = _editor_translations;
+	while (etl->data) {
+		const String &locale = etl->lang;
+		locales.push_back(locale);
 
-private:
-	Map<StringName, uint32_t> groups;
+		etl++;
+	}
 
-	String group_name;
-	DispatchMode dispatch_mode = MODE_PROXY;
-	Vector3 grid_radius = Vector3(1, 1, 1);
+	return locales;
+}
 
-	real_t cell_size = 1.0;
-	uint32_t group_version = 0;
+void load_editor_translations(const String &p_locale) {
+	EditorTranslationList *etl = _editor_translations;
+	while (etl->data) {
+		if (etl->lang == p_locale) {
+			Vector<uint8_t> data;
+			data.resize(etl->uncomp_size);
+			Compression::decompress(data.ptrw(), etl->uncomp_size, etl->data, etl->comp_size, Compression::MODE_DEFLATE);
 
-	void _clear_groups();
-	void _update_groups();
-	void _add_groups(int *p_cell, String p_base, int p_depth);
-	void _new_group(StringName p_name);
+			FileAccessMemory *fa = memnew(FileAccessMemory);
+			fa->open_custom(data.ptr(), data.size());
 
-	void _proximity_group_broadcast(String p_method, Variant p_parameters);
+			Ref<Translation> tr = TranslationLoaderPO::load_translation(fa);
 
-protected:
-	void _notification(int p_what);
+			if (tr.is_valid()) {
+				tr->set_locale(etl->lang);
+				TranslationServer::get_singleton()->set_tool_translation(tr);
+				break;
+			}
+		}
 
-	static void _bind_methods();
+		etl++;
+	}
+}
 
-public:
-	void set_group_name(const String &p_group_name);
-	String get_group_name() const;
+void load_doc_translations(const String &p_locale) {
+	DocTranslationList *dtl = _doc_translations;
+	while (dtl->data) {
+		if (dtl->lang == p_locale) {
+			Vector<uint8_t> data;
+			data.resize(dtl->uncomp_size);
+			Compression::decompress(data.ptrw(), dtl->uncomp_size, dtl->data, dtl->comp_size, Compression::MODE_DEFLATE);
 
-	void set_dispatch_mode(DispatchMode p_mode);
-	DispatchMode get_dispatch_mode() const;
+			FileAccessMemory *fa = memnew(FileAccessMemory);
+			fa->open_custom(data.ptr(), data.size());
 
-	void set_grid_radius(const Vector3 &p_radius);
-	Vector3 get_grid_radius() const;
+			Ref<Translation> tr = TranslationLoaderPO::load_translation(fa);
 
-	void broadcast(String p_method, Variant p_parameters);
+			if (tr.is_valid()) {
+				tr->set_locale(dtl->lang);
+				TranslationServer::get_singleton()->set_doc_translation(tr);
+				break;
+			}
+		}
 
-	ProximityGroup3D();
-	~ProximityGroup3D() {}
-};
-
-VARIANT_ENUM_CAST(ProximityGroup3D::DispatchMode);
-
-#endif // PROXIMITY_GROUP_H
+		dtl++;
+	}
+}
