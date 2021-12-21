@@ -1659,7 +1659,9 @@ Vector<String> GodotConverter4::check_for_files() {
 		String path = directories_to_check.get(directories_to_check.size() - 1); // Is there any pop_back function?
 		directories_to_check.resize(directories_to_check.size() - 1); // Remove last element
 		if (dir.open(path) == OK) {
-			dir.list_dir_begin(false, true);
+			dir.set_include_navigational(false);
+			dir.set_include_hidden(true);
+			dir.list_dir_begin();
 			String current_dir = dir.get_current_dir();
 			String file_name = dir.get_next();
 
