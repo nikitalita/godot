@@ -1391,8 +1391,11 @@ int GodotConverter4::converter() {
 		file->store_string(conventer_text + "\n" + project_godot_content);
 	}
 
-	Vector<String> collected_files = check_for_files();
+	return convert_files(check_for_files());
+};
 
+int GodotConverter4::convert_files(const Vector<String> &collected_files){
+	
 	uint32_t converted_files = 0;
 
 	// Check file by file

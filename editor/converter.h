@@ -77,6 +77,7 @@ class GodotConverter4 {
 
 public:
 	int converter_validation();
+	int convert_files(const Vector<String> &collected_files);
 	int converter();
 };
 
