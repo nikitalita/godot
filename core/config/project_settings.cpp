@@ -415,6 +415,12 @@ void ProjectSettings::_convert_to_last_version(int p_from_version) {
 			}
 		}
 	}
+	Map<StringName, VariantContainer>::Element *old_bin_export = props.find("editor/convert_text_resources_to_binary_on_export");
+	if (old_bin_export) {
+		VariantContainer val = old_bin_export->value();
+		props.erase("editor/convert_text_resources_to_binary_on_export");
+		props["editor/export/convert_text_resources_to_binary"] = val;
+	}
 }
 
 /*
