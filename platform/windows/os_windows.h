@@ -167,6 +167,8 @@ public:
 	virtual String get_environment(const String &p_var) const override;
 	virtual bool set_environment(const String &p_var, const String &p_value) const override;
 
+	virtual Vector<String> get_system_font_preset_fallbacks(const String &preset_name, const String &language) const override;
+	virtual String get_system_font_preset(const String &preset_name) const override;
 	virtual Vector<String> get_system_fonts() const override;
 	virtual String get_system_font_path(const String &p_font_name, bool p_bold = false, bool p_italic = false) const override;
 

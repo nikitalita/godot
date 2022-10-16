@@ -769,18 +769,59 @@ Vector<String> OS_Windows::get_system_fonts() const {
 	return ret;
 }
 
+// Chinese Sans Serif: Microsoft JhengHei
+// Chinese Serif: PmingLiu, MingLiu, SimSun
+// Chinese Simplified: SimSun, NsimSun, Microsoft YaHei
+// Japanese Sans Serif: Meiryo, MS PGothic, MS Gothic, Yu Gothic Regular
+// Japanese Serif: MS PMincho, MS Mincho, SimSun, NSimSun
+// Korean Sans Serif: Malgun Gothic, Dotum, Gulim
+// Korean Serif: Batang, Gungsuh, Malgun Gothic
+
+Vector<String> OS_Windows::get_system_font_preset_fallbacks(const String &preset_name, const String &language) const {
+	Vector<String> fallbacks;
+	String font_name = preset_name.to_lower();
+	if (language == "Hani") {
+		fallbacks.push_back("Microsoft YaHei UI");
+	}
+	return fallbacks;
+}
+
+String OS_Windows::get_system_font_preset(const String &preset_name) const {
+	String font_name = preset_name.to_lower();
+	if (font_name == "sans-serif") {
+		font_name = "Segoe UI";
+	} else if (font_name == "serif") {
+		font_name = "Times New Roman";
+	} else if (font_name == "monospace") {
+		font_name = "Courier New";
+	} else if (font_name == "cursive") {
+		font_name = "Comic Sans MS";
+	} else if (font_name == "fantasy") {
+		font_name = "Gabriola";
+	}
+	return font_name;
+}
+
+bool is_preset(const String &p_font_name) {
+	String font_name = p_font_name.to_lower();
+	if (font_name == "sans-serif") {
+		return true;
+	} else if (font_name == "serif") {
+		return true;
+	} else if (font_name == "monospace") {
+		return true;
+	} else if (font_name == "cursive") {
+		return true;
+	} else if (font_name == "fantasy") {
+		return true;
+	}
+	return false;
+}
+
 String OS_Windows::get_system_font_path(const String &p_font_name, bool p_bold, bool p_italic) const {
 	String font_name = p_font_name;
-	if (font_name.to_lower() == "sans-serif") {
-		font_name = "Arial";
-	} else if (font_name.to_lower() == "serif") {
-		font_name = "Times New Roman";
-	} else if (font_name.to_lower() == "monospace") {
-		font_name = "Courier New";
-	} else if (font_name.to_lower() == "cursive") {
-		font_name = "Comic Sans MS";
-	} else if (font_name.to_lower() == "fantasy") {
-		font_name = "Gabriola";
+	if (is_preset(p_font_name)) {
+		font_name = get_system_font_preset(p_font_name);
 	}
 
 	ComAutoreleaseRef<IDWriteFactory> dwrite_factory;
@@ -847,7 +888,20 @@ String OS_Windows::get_system_font_path(const String &p_font_name, bool p_bold, 
 		if (FAILED(hr)) {
 			continue;
 		}
-		return String::utf16((const char16_t *)&file_path[0]);
+		String path = String::utf16((const char16_t *)&file_path[0]);
+#ifdef TOOLS_ENABLED
+		// To avoid a bunch of editor warnings when loading system fonts
+		WIN32_FIND_DATAW d;
+		HANDLE fnd = FindFirstFileW((LPCWSTR)(path.utf16().get_data()), &d);
+		if (fnd != INVALID_HANDLE_VALUE) {
+			String fname = String::utf16((const char16_t *)(d.cFileName));
+			if (fname.to_lower() == path.get_file().to_lower()) {
+				path = path.get_base_dir() + "\\" + fname;
+			}
+			FindClose(fnd);
+		}
+#endif
+		return path;
 	}
 	return String();
 }

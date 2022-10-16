@@ -149,6 +149,8 @@ public:
 	virtual void set_low_processor_usage_mode_sleep_usec(int p_usec);
 	virtual int get_low_processor_usage_mode_sleep_usec() const;
 
+	virtual Vector<String> get_system_font_preset_fallbacks(const String &preset_name, const String &language) const { return Vector<String>(); };
+	virtual String get_system_font_preset(const String &preset_name) const { return String(); };
 	virtual Vector<String> get_system_fonts() const { return Vector<String>(); };
 	virtual String get_system_font_path(const String &p_font_name, bool p_bold = false, bool p_italic = false) const { return String(); };
 	virtual String get_executable_path() const;
