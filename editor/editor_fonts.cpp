@@ -77,139 +77,24 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	}
 	const int default_font_size = int(EDITOR_GET("interface/editor/main_font_size")) * EDSCALE;
 	const float embolden_strength = 0.6;
-//#define USING_SYSTEM_FONTS 1
-#ifdef USING_SYSTEM_FONTS
 
-	// Probe system fonts.
-	struct _FontSample {
-		String script;
-		String sample;
-	};
-
-	static _FontSample _samples[] = {
-		{ "Arab", U"يوٱهنملكقفغعظطضصشسزرذدخحجثتبا" },
-		{ "Beng", U"অআইঈউঊঋৠঌৡএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযয়রলওয়শষসহক্ষজ্ঞৎ" },
-		{ "Deva", U"अआइईउऊऋॠऌॡएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलळवशषसहक्षज्ञ" },
-		{ "Geor", U"აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ" },
-		{ "Hebr", U"בגדהוזחטיכךלמנסעפצקרשתםןףץ" },
-		{ "Mlym", U"അആഇഈഉഊഋഌഎഏഐഒഓഔകഖഗഘങചഛജഝഞടഠഡഢണതഥദധനഩ" },
-		{ "Orya", U"ଅଆଇଈଉଊଋୠଌୡଏଐଓଔକଖଗଘଙଚଛଜଝଞଟଠଡଢଣତଥଦଧନପଫବଭମଯୟରଲଳୱଶଷସହକ୍ଷଜ୍ଞ" },
-		{ "Sinh", U"අආඇඈඉඊඋඌඍඎඏඐඑඒඓඔඕඖකඛගඝඞඟචඡජඣඤඥඦටඨඩඪණඬතථද" },
-		{ "Taml", U"ஆஇஈஉஊஎஏஐஒஓஔகஙசஜஞடணதநனபமயரறலளழவஶஷஸஹாிீுூெேை" },
-		{ "Telu", U"అఆఇఈఉఊఋఌఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయ" },
-		{ "Thai", U"กขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรฤลฦวศษสหฬ" },
-		{ "Hani", U"一人大中的上出生不年自子地日本同下三小前所是我有了在国到会你他要以時也就可之得十事好那能学家多二和後用天者而心行新看文如道去都想方只手成問然当作主學这資長會来五這個个社市说们月为四為九交來政系業分时" },
-		{ String(), String() },
-	};
-
-	Ref<Font> default_font = load_system_font("sans-serif", false, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<Font> default_font_msdf = load_system_font("sans-serif", false, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
-	Ref<Font> default_font_bold = load_system_font("sans-serif", true, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<Font> default_font_bold_msdf = load_system_font("sans-serif", true, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
-	Ref<Font> default_font_mono = load_system_font("monospace", false, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	TypedArray<Font> fallbacks;
-	TypedArray<Font> fallbacks_bold;
-	HashMap<String, String> selected_script_presets;
-	int script_set_size = 0;
-	for (; !_samples[script_set_size].script.is_empty(); script_set_size++) {
-		Vector<String> script_fallbacks = OS::get_singleton()->get_system_font_preset_fallbacks("sans-serif", _samples[script_set_size].script);
-		for (String fallback : script_fallbacks) {
-			String path = OS::get_singleton()->get_system_font_path(fallback);
-			if (path.is_empty()) {
-				continue;
-			}
-			selected_script_presets.insert(_samples[script_set_size].script, fallback);
-		}
-	}
-	Vector<String> sys_font_names = OS::get_singleton()->get_system_fonts();
-
-	HashSet<String> selected_scripts;
-	for (const String &E : sys_font_names) {
-		String path = OS::get_singleton()->get_system_font_path(E);
-		if (path.is_empty()) {
-			continue;
-		}
-
-		Ref<FontFile> f;
-		f.instantiate();
-		if (f->load_dynamic_font(path) == OK) {
-			for (int i = 0; !_samples[i].script.is_empty(); i++) {
-				if (!selected_scripts.has(_samples[i].script) && f->is_script_supported(_samples[i].script)) {
-					bool ok = true;
-					for (int j = 0; j < _samples[i].sample.size(); j++) {
-						bool has_char = f->has_char(_samples[i].sample[j]);
-						ok = ok && has_char;
-						if (!has_char) {
-							break;
-						}
-					}
-					if (ok) {
-						selected_scripts.insert(_samples[i].script);
-						print_line(vformat("Selected font for %s: %s (%s)", _samples[i].script, E, path));
-						load_system_font(E, false, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-						break;
-					}
-				}
-			}
-		}
-	}
-	default_font->set_fallbacks(fallbacks);
-	default_font_msdf->set_fallbacks(fallbacks);
-
-	HashSet<String> selected_scripts_bold;
-	for (const String &E : sys_font_names) {
-		String path = OS::get_singleton()->get_system_font_path(E, true);
-		if (path.is_empty()) {
-			continue;
-		}
-
-		Ref<FontFile> f;
-		f.instantiate();
-		if (f->load_dynamic_font(path) == OK) {
-			for (int i = 0; !_samples[i].script.is_empty(); i++) {
-				if (!selected_scripts_bold.has(_samples[i].script) && f->is_script_supported(_samples[i].script)) {
-					bool ok = true;
-					for (int j = 0; j < _samples[i].sample.size(); j++) {
-						bool has_char = f->has_char(_samples[i].sample[j]);
-						ok = ok && has_char;
-						if (!has_char) {
-							break;
-						}
-					}
-					if (ok) {
-						selected_scripts_bold.insert(_samples[i].script);
-						print_line(vformat("Selected bold font for %s: %s (%s)", _samples[i].script, E, path));
-						load_system_font(E, true, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-						break;
-					}
-				}
-			}
-		}
-	}
-	default_font_bold->set_fallbacks(fallbacks_bold);
-	default_font_bold_msdf->set_fallbacks(fallbacks_bold);
-	default_font_mono->set_fallbacks(fallbacks);
-
-#else
+	Ref<Font> default_font = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
+	Ref<Font> default_font_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
+	Ref<Font> default_font_bold = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
+	Ref<Font> default_font_bold_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
+	Ref<Font> default_font_mono = FallbackFonts::load_internal_font(_font_JetBrainsMono_Regular, _font_JetBrainsMono_Regular_size, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
 	// Load built-in fonts.
 	if (!FallbackFonts::get_singleton()->are_default_fallback_fonts_loaded()) {
 		FallbackFonts::get_singleton()->load_default_editor_fallback_fonts(font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
 	}
-	Ref<Font> default_font = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<Font> default_font_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
-
-	//font_hinting, font_antialiasing, true, font_subpixel_positioning, false
 	FallbackFonts::get_singleton()->set_fallback_fonts(default_font, false, false);
 	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_msdf, false, false);
 
-	Ref<Font> default_font_bold = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<Font> default_font_bold_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
 	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_bold, true, false);
 	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_bold_msdf, true, false);
 
-	Ref<Font> default_font_mono = FallbackFonts::load_internal_font(_font_JetBrainsMono_Regular, _font_JetBrainsMono_Regular_size, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
 	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_mono, false, false);
-#endif
+
 	// Init base font configs and load custom fonts.
 	String custom_font_path = EditorSettings::get_singleton()->get("interface/editor/main_font");
 	String custom_font_path_bold = EditorSettings::get_singleton()->get("interface/editor/main_font_bold");

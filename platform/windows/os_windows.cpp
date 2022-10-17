@@ -777,7 +777,7 @@ Vector<String> OS_Windows::get_system_fonts() const {
 // Korean Sans Serif: Malgun Gothic, Dotum, Gulim
 // Korean Serif: Batang, Gungsuh, Malgun Gothic
 
-Vector<String> OS_Windows::get_system_font_preset_fallbacks(const String &preset_name, const String &language) const {
+Vector<String> OS_Windows::get_system_font_preset_fallbacks_names(const String &preset_name, const String &language) const {
 	Vector<String> fallbacks;
 	String font_name = preset_name.to_lower();
 	if (language == "Hani") {
@@ -786,7 +786,7 @@ Vector<String> OS_Windows::get_system_font_preset_fallbacks(const String &preset
 	return fallbacks;
 }
 
-String OS_Windows::get_system_font_preset(const String &preset_name) const {
+String OS_Windows::get_system_font_preset_name(const String &preset_name) const {
 	String font_name = preset_name.to_lower();
 	if (font_name == "sans-serif") {
 		font_name = "Segoe UI";
@@ -821,7 +821,7 @@ bool is_preset(const String &p_font_name) {
 String OS_Windows::get_system_font_path(const String &p_font_name, bool p_bold, bool p_italic) const {
 	String font_name = p_font_name;
 	if (is_preset(p_font_name)) {
-		font_name = get_system_font_preset(p_font_name);
+		font_name = get_system_font_preset_name(p_font_name);
 	}
 
 	ComAutoreleaseRef<IDWriteFactory> dwrite_factory;
