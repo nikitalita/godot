@@ -62,6 +62,7 @@
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 #include "scene/register_scene_types.h"
+#include "scene/resources/default_theme/fallback_font.h"
 #include "scene/resources/packed_scene.h"
 #include "scene/theme/theme_db.h"
 #include "servers/audio_server.h"
@@ -107,6 +108,8 @@
 // Initialized in setup()
 static Engine *engine = nullptr;
 static ProjectSettings *globals = nullptr;
+static FallbackFonts *fallback_fonts = nullptr;
+
 static Input *input = nullptr;
 static InputMap *input_map = nullptr;
 static TranslationServer *translation_server = nullptr;
@@ -651,6 +654,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	register_core_settings(); //here globals are present
 
+	fallback_fonts = memnew(FallbackFonts);
 	translation_server = memnew(TranslationServer);
 	performance = memnew(Performance);
 	GDREGISTER_CLASS(Performance);
@@ -1874,6 +1878,9 @@ error:
 	}
 	if (time_singleton) {
 		memdelete(time_singleton);
+	}
+	if (fallback_fonts) {
+		memdelete(fallback_fonts);
 	}
 	if (translation_server) {
 		memdelete(translation_server);

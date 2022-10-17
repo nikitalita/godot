@@ -1,19 +1,34 @@
 #!/usr/bin/env python
 
+import default_theme_icons_builders
+import default_theme_builders
+from platform_methods import run_in_subprocess
+import glob
+
 Import("env")
 
-from platform_methods import run_in_subprocess
-import default_theme_builders
-import default_theme_icons_builders
 
 env.add_source_files(env.scene_sources, "*.cpp")
-
-env.Depends("#scene/resources/default_theme/default_font.gen.h", "#thirdparty/fonts/OpenSans_SemiBold.woff2")
-env.CommandNoCache(
-    "#scene/resources/default_theme/default_font.gen.h",
-    "#thirdparty/fonts/OpenSans_SemiBold.woff2",
-    run_in_subprocess(default_theme_builders.make_fonts_header),
-)
+if env["fallback_fonts"]:
+    flist = glob.glob(env.Dir("#thirdparty").abspath + "/fonts/*.ttf")
+    flist.extend(glob.glob(env.Dir("#thirdparty").abspath + "/fonts/*.otf"))
+    flist.extend(glob.glob(env.Dir("#thirdparty").abspath + "/fonts/*.woff"))
+    flist.extend(glob.glob(env.Dir("#thirdparty").abspath + "/fonts/*.woff2"))
+    flist.sort()
+    env.Depends("#scene/resources/default_theme/default_font.gen.h", flist)
+    env.CommandNoCache(
+        "#scene/resources/default_theme/default_font.gen.h",
+        flist,
+        run_in_subprocess(default_theme_builders.make_fonts_header),
+    )
+else:
+    env.Depends("#scene/resources/default_theme/default_font.gen.h",
+                "#thirdparty/fonts/OpenSans_SemiBold.woff2")
+    env.CommandNoCache(
+        "#scene/resources/default_theme/default_font.gen.h",
+        "#thirdparty/fonts/OpenSans_SemiBold.woff2",
+        run_in_subprocess(default_theme_builders.make_fonts_header),
+    )
 
 env["BUILDERS"]["MakeDefaultThemeIconsBuilder"] = Builder(
     action=env.Run(

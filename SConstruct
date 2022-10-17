@@ -188,6 +188,7 @@ opts.Add(BoolVariable("openxr", "Enable the OpenXR driver", True))
 opts.Add(BoolVariable("use_volk", "Use the volk library to load the Vulkan loader dynamically", True))
 opts.Add("custom_modules", "A list of comma-separated directory paths containing custom modules to build.", "")
 opts.Add(BoolVariable("custom_modules_recursive", "Detect custom modules recursively for each specified path.", True))
+opts.Add(BoolVariable("fallback_fonts", "Use built-in third-party fonts for default theme", True))
 
 # Advanced options
 opts.Add(BoolVariable("dev_mode", "Alias for dev options: verbose=yes warnings=extra werror=yes tests=yes", False))
@@ -845,6 +846,8 @@ if selected_platform in platform_list:
             env.Append(CPPDEFINES=["ADVANCED_GUI_DISABLED"])
     if env["minizip"]:
         env.Append(CPPDEFINES=["MINIZIP_ENABLED"])
+    if env["fallback_fonts"]:
+        env.Append(CPPDEFINES=["FALLBACK_FONTS_ENABLED"])
 
     if not env["verbose"]:
         methods.no_verbose(sys, env)

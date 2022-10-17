@@ -33,6 +33,7 @@
 #include "core/os/os.h"
 #include "default_font.gen.h"
 #include "default_theme_icons.gen.h"
+#include "fallback_font.h"
 #include "scene/resources/font.h"
 #include "scene/resources/theme.h"
 #include "scene/theme/theme_db.h"
@@ -1048,6 +1049,11 @@ void fill_default_theme(Ref<Theme> &theme, const Ref<Font> &default_font, const 
 	// Same color as the error icon.
 	default_style = make_flat_stylebox(Color(1, 0.365, 0.365), 4, 4, 4, 4, 0, false, 2);
 }
+void set_internal_font_fallbacks(Ref<Font> p_font) {
+#ifdef FALLBACK_FONTS_ENABLED
+
+#endif
+}
 
 void make_default_theme(float p_scale, Ref<Font> p_font, TextServer::SubpixelPositioning p_font_subpixel, TextServer::Hinting p_font_hinting, TextServer::FontAntialiasing p_font_antialiasing, bool p_font_msdf, bool p_font_generate_mipmaps) {
 	Ref<Theme> t;
@@ -1094,7 +1100,15 @@ void make_default_theme(float p_scale, Ref<Font> p_font, TextServer::SubpixelPos
 		italics_font->set_base_font(default_font);
 		italics_font->set_variation_transform(Transform2D(1.0, 0.2, 0.0, 1.0, 0.0, 0.0));
 	}
-
+#ifdef FALLBACK_FONTS_ENABLED
+	if (!FallbackFonts::get_singleton()->are_default_fallback_fonts_loaded()) {
+		FallbackFonts::get_singleton()->load_default_fallback_fonts(p_font_hinting, p_font_antialiasing, true, p_font_subpixel, false);
+	}
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font, false, false);
+	FallbackFonts::get_singleton()->set_fallback_fonts((Ref<Font>)bold_font, true, false);
+	FallbackFonts::get_singleton()->set_fallback_fonts((Ref<Font>)italics_font, false, true);
+	FallbackFonts::get_singleton()->set_fallback_fonts((Ref<Font>)bold_italics_font, true, true);
+#endif
 	fill_default_theme(t, default_font, bold_font, bold_italics_font, italics_font, default_icon, default_style, default_scale);
 
 	ThemeDB::get_singleton()->set_default_theme(t);

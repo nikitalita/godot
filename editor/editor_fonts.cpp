@@ -35,82 +35,9 @@
 #include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
 #include "scene/resources/default_theme/default_theme.h"
+#include "scene/resources/default_theme/fallback_font.h"
+
 #include "scene/resources/font.h"
-
-Ref<FontFile> load_external_font(const String &p_path, TextServer::Hinting p_hinting, TextServer::FontAntialiasing p_aa, bool p_autohint, TextServer::SubpixelPositioning p_font_subpixel_positioning, bool p_msdf = false, TypedArray<Font> *r_fallbacks = nullptr) {
-	Ref<FontFile> font;
-	font.instantiate();
-
-	Vector<uint8_t> data = FileAccess::get_file_as_array(p_path);
-
-	font->set_data(data);
-	font->set_multichannel_signed_distance_field(p_msdf);
-	font->set_antialiasing(p_aa);
-	font->set_hinting(p_hinting);
-	font->set_force_autohinter(p_autohint);
-	font->set_subpixel_positioning(p_font_subpixel_positioning);
-
-	if (r_fallbacks != nullptr) {
-		r_fallbacks->push_back(font);
-	}
-
-	return font;
-}
-
-Ref<SystemFont> load_system_font(const String &p_name, bool p_bold, TextServer::Hinting p_hinting, TextServer::FontAntialiasing p_aa, bool p_autohint, TextServer::SubpixelPositioning p_font_subpixel_positioning, bool p_msdf = false, TypedArray<Font> *r_fallbacks = nullptr) {
-	Ref<SystemFont> font;
-	font.instantiate();
-
-	PackedStringArray names;
-	names.push_back(p_name);
-
-	font->set_font_names(names);
-	if (p_bold) {
-		font->set_font_style(TextServer::FONT_BOLD);
-	}
-	font->set_multichannel_signed_distance_field(p_msdf);
-	font->set_antialiasing(p_aa);
-	font->set_hinting(p_hinting);
-	font->set_force_autohinter(p_autohint);
-	font->set_subpixel_positioning(p_font_subpixel_positioning);
-
-	if (r_fallbacks != nullptr) {
-		r_fallbacks->push_back(font);
-	}
-
-	return font;
-}
-
-Ref<FontFile> load_internal_font(const uint8_t *p_data, size_t p_size, TextServer::Hinting p_hinting, TextServer::FontAntialiasing p_aa, bool p_autohint, TextServer::SubpixelPositioning p_font_subpixel_positioning, bool p_msdf = false, TypedArray<Font> *r_fallbacks = nullptr) {
-	Ref<FontFile> font;
-	font.instantiate();
-
-	font->set_data_ptr(p_data, p_size);
-	font->set_multichannel_signed_distance_field(p_msdf);
-	font->set_antialiasing(p_aa);
-	font->set_hinting(p_hinting);
-	font->set_force_autohinter(p_autohint);
-	font->set_subpixel_positioning(p_font_subpixel_positioning);
-
-	if (r_fallbacks != nullptr) {
-		r_fallbacks->push_back(font);
-	}
-
-	return font;
-}
-
-Ref<FontVariation> make_bold_font(const Ref<Font> &p_font, double p_embolden, TypedArray<Font> *r_fallbacks = nullptr) {
-	Ref<FontVariation> font_var;
-	font_var.instantiate();
-	font_var->set_base_font(p_font);
-	font_var->set_variation_embolden(p_embolden);
-
-	if (r_fallbacks != nullptr) {
-		r_fallbacks->push_back(font_var);
-	}
-
-	return font_var;
-}
 
 void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
@@ -265,48 +192,23 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 
 #else
 	// Load built-in fonts.
-	Ref<Font> default_font = load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<Font> default_font_msdf = load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
+	if (!FallbackFonts::get_singleton()->are_default_fallback_fonts_loaded()) {
+		FallbackFonts::get_singleton()->load_default_editor_fallback_fonts(font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
+	}
+	Ref<Font> default_font = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
+	Ref<Font> default_font_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Regular, _font_NotoSans_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
 
-	TypedArray<Font> fallbacks;
-	Ref<FontFile> arabic_font = load_internal_font(_font_NotoNaskhArabicUI_Regular, _font_NotoNaskhArabicUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> bengali_font = load_internal_font(_font_NotoSansBengaliUI_Regular, _font_NotoSansBengaliUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> devanagari_font = load_internal_font(_font_NotoSansDevanagariUI_Regular, _font_NotoSansDevanagariUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> georgian_font = load_internal_font(_font_NotoSansGeorgian_Regular, _font_NotoSansGeorgian_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> hebrew_font = load_internal_font(_font_NotoSansHebrew_Regular, _font_NotoSansHebrew_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> malayalam_font = load_internal_font(_font_NotoSansMalayalamUI_Regular, _font_NotoSansMalayalamUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> oriya_font = load_internal_font(_font_NotoSansOriyaUI_Regular, _font_NotoSansOriyaUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> sinhala_font = load_internal_font(_font_NotoSansSinhalaUI_Regular, _font_NotoSansSinhalaUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> tamil_font = load_internal_font(_font_NotoSansTamilUI_Regular, _font_NotoSansTamilUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> telugu_font = load_internal_font(_font_NotoSansTeluguUI_Regular, _font_NotoSansTeluguUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> thai_font = load_internal_font(_font_NotoSansThaiUI_Regular, _font_NotoSansThaiUI_Regular_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> fallback_font = load_internal_font(_font_DroidSansFallback, _font_DroidSansFallback_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	Ref<FontFile> japanese_font = load_internal_font(_font_DroidSansJapanese, _font_DroidSansJapanese_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks);
-	default_font->set_fallbacks(fallbacks);
-	default_font_msdf->set_fallbacks(fallbacks);
+	//font_hinting, font_antialiasing, true, font_subpixel_positioning, false
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font, false, false);
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_msdf, false, false);
 
-	Ref<FontFile> default_font_bold = load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
-	Ref<FontFile> default_font_bold_msdf = load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
+	Ref<Font> default_font_bold = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false);
+	Ref<Font> default_font_bold_msdf = FallbackFonts::load_internal_font(_font_NotoSans_Bold, _font_NotoSans_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, true);
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_bold, true, false);
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_bold_msdf, true, false);
 
-	TypedArray<Font> fallbacks_bold;
-	Ref<FontFile> arabic_font_bold = load_internal_font(_font_NotoNaskhArabicUI_Bold, _font_NotoNaskhArabicUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> bengali_font_bold = load_internal_font(_font_NotoSansBengaliUI_Bold, _font_NotoSansBengaliUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> devanagari_font_bold = load_internal_font(_font_NotoSansDevanagariUI_Bold, _font_NotoSansDevanagariUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> georgian_font_bold = load_internal_font(_font_NotoSansGeorgian_Bold, _font_NotoSansGeorgian_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> hebrew_font_bold = load_internal_font(_font_NotoSansHebrew_Bold, _font_NotoSansHebrew_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> malayalam_font_bold = load_internal_font(_font_NotoSansMalayalamUI_Bold, _font_NotoSansMalayalamUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> oriya_font_bold = load_internal_font(_font_NotoSansOriyaUI_Bold, _font_NotoSansOriyaUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> sinhala_font_bold = load_internal_font(_font_NotoSansSinhalaUI_Bold, _font_NotoSansSinhalaUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> tamil_font_bold = load_internal_font(_font_NotoSansTamilUI_Bold, _font_NotoSansTamilUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> telugu_font_bold = load_internal_font(_font_NotoSansTeluguUI_Bold, _font_NotoSansTeluguUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontFile> thai_font_bold = load_internal_font(_font_NotoSansThaiUI_Bold, _font_NotoSansThaiUI_Bold_size, font_hinting, font_antialiasing, true, font_subpixel_positioning, false, &fallbacks_bold);
-	Ref<FontVariation> fallback_font_bold = make_bold_font(fallback_font, embolden_strength, &fallbacks_bold);
-	Ref<FontVariation> japanese_font_bold = make_bold_font(japanese_font, embolden_strength, &fallbacks_bold);
-	default_font_bold->set_fallbacks(fallbacks_bold);
-	default_font_bold_msdf->set_fallbacks(fallbacks_bold);
-
-	Ref<FontFile> default_font_mono = load_internal_font(_font_JetBrainsMono_Regular, _font_JetBrainsMono_Regular_size, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
-	default_font_mono->set_fallbacks(fallbacks);
+	Ref<Font> default_font_mono = FallbackFonts::load_internal_font(_font_JetBrainsMono_Regular, _font_JetBrainsMono_Regular_size, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
+	FallbackFonts::get_singleton()->set_fallback_fonts(default_font_mono, false, false);
 #endif
 	// Init base font configs and load custom fonts.
 	String custom_font_path = EditorSettings::get_singleton()->get("interface/editor/main_font");
@@ -316,7 +218,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<FontVariation> default_fc;
 	default_fc.instantiate();
 	if (custom_font_path.length() > 0 && dir->file_exists(custom_font_path)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font);
@@ -333,7 +235,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<FontVariation> default_fc_msdf;
 	default_fc_msdf.instantiate();
 	if (custom_font_path.length() > 0 && dir->file_exists(custom_font_path)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_msdf);
@@ -350,7 +252,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<FontVariation> bold_fc;
 	bold_fc.instantiate();
 	if (custom_font_path_bold.length() > 0 && dir->file_exists(custom_font_path_bold)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path_bold, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path_bold, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_bold);
@@ -358,7 +260,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 		}
 		bold_fc->set_base_font(custom_font);
 	} else if (custom_font_path.length() > 0 && dir->file_exists(custom_font_path)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_bold);
@@ -376,7 +278,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<FontVariation> bold_fc_msdf;
 	bold_fc_msdf.instantiate();
 	if (custom_font_path_bold.length() > 0 && dir->file_exists(custom_font_path_bold)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path_bold, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path_bold, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_bold_msdf);
@@ -384,7 +286,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 		}
 		bold_fc_msdf->set_base_font(custom_font);
 	} else if (custom_font_path.length() > 0 && dir->file_exists(custom_font_path)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path, font_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_bold_msdf);
@@ -402,7 +304,7 @@ void editor_register_fonts(Ref<Theme> p_theme) {
 	Ref<FontVariation> mono_fc;
 	mono_fc.instantiate();
 	if (custom_font_path_source.length() > 0 && dir->file_exists(custom_font_path_source)) {
-		Ref<FontFile> custom_font = load_external_font(custom_font_path_source, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
+		Ref<FontFile> custom_font = FallbackFonts::load_external_font(custom_font_path_source, font_mono_hinting, font_antialiasing, true, font_subpixel_positioning);
 		{
 			TypedArray<Font> fallback_custom;
 			fallback_custom.push_back(default_font_mono);
