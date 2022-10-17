@@ -3352,6 +3352,9 @@ void Main::cleanup(bool p_force) {
 	if (time_singleton) {
 		memdelete(time_singleton);
 	}
+	if (fallback_fonts) {
+		memdelete(fallback_fonts);
+	}
 	if (translation_server) {
 		memdelete(translation_server);
 	}

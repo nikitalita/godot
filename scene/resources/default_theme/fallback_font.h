@@ -1,13 +1,14 @@
 #ifndef __FALLBACK_FONT_H__
 #define __FALLBACK_FONT_H__
 
+#include "core/templates/hash_map.h"
 #include "scene/resources/font.h"
 class FallbackFonts {
 private:
 	static FallbackFonts *singleton;
 	// Probe system fonts.
 
-	static HashMap<String, String> _samples;
+	HashMap<String, String> _samples;
 	HashMap<String, TypedArray<Font>> _fallback_font_map;
 #ifdef TOOLS_ENABLED
 	HashMap<String, TypedArray<Font>> _editor_fallback_font_map;
