@@ -32,7 +32,18 @@ def add_source_files(self, sources, files):
         if obj in sources:
             print('WARNING: Object "{}" already included in environment sources.'.format(obj))
             continue
-        sources.append(obj)
+        if self["profile_compilation"]:
+            if not isinstance(path, str):
+                profile_path = "#" + obj[0].get_relpath() + ".profile"
+            else:
+                profile_path = os.path.splitext(path)[0] + self["OBJSUFFIX"] + ".profile"
+            # only enabled on MSVC for now
+            if self.msvc:
+                # mark the ".profile" file as a side effect and set it to be cleaned when --clean is run
+                # Don't add it to the sources, as there is no builder for it
+                prof_target = self.SideEffect(profile_path, obj)
+                self.Clean(obj, prof_target)
+        sources.append(obj)        
 
 
 def disable_warnings(self):
@@ -422,11 +433,12 @@ def sort_module_list(env):
         env.module_list.move_to_end(k)
 
 
-def use_windows_spawn_fix(self, platform=None):
+def use_windows_spawn_fix(self, platform=None, MSVC=False):
 
     if os.name != "nt":
         return  # not needed, only for windows
 
+    # MINGW:
     # On Windows, due to the limited command line length, when creating a static library
     # from a very high number of objects SCons will invoke "ar" once per object file;
     # that makes object files with same names to be overwritten so the last wins and
@@ -435,47 +447,107 @@ def use_windows_spawn_fix(self, platform=None):
     # got built correctly regardless the invocation strategy.
     # Furthermore, since SCons will rebuild the library from scratch when an object file
     # changes, no multiple versions of the same object file will be present.
-    self.Replace(ARFLAGS="q")
+    if not self.msvc:
+        self.Replace(ARFLAGS="q")
+    
+    # MSVC:
+    # Compilation profiling to debug performance issues with MSVC builds
+    # The reason this is here in the spawner is because there's no way to capture the compiler 
+    # output from the scons build action after its spawned. Ideally, we'd write the compilation
+    # profile as a seperate action after having saved the build output, but
+    # we can't without making a custom build action.
+
+    # add ENV breadcrumbs here as spawn() does not inherit the global scons env
+    if self.msvc:
+        self["ENV"]["SCONS_USING_MSVC"] = "1"
+    if self["profile_compilation"]:
+        self["ENV"]["SCONS_PROFILE_COMPILATION"] = "1"
+
+    def writeCompilationProfile(cmd, args, env, cmdline, output, err):
+        try:
+            if env["SCONS_PROFILE_COMPILATION"]:
+                if "SCONS_USING_MSVC" in env and env["SCONS_USING_MSVC"]:
+                    if cmd.startswith("cl"):
+                        obj_file = ""
+                        profile_file = ""
+                        code_file = ""
+                        for i in range(0,len(args)):
+                            arg = args[i]
+                            if arg.startswith("/Fo"):
+                                obj_file = arg.replace("/Fo", "")
+                                if not obj_file:
+                                    #try next arg
+                                    obj_file = args[i+1]
+                                profile_file = obj_file + ".profile"
+                            if arg.startswith("/c"):
+                                code_file = arg.replace("/c", "")
+                                if not code_file:
+                                    #code file is next arg
+                                    code_file = args[i+1]
+                            if profile_file and code_file:
+                                break
+                        if not profile_file:
+                            print("Could not find obj output cmd in MSVC args")
+                            print(args)
+                        with open(profile_file, "w") as pffw:
+                            pffw.write("***** Compile Command: " + cmdline + "\n")
+                            pffw.write("***** Obj file: " + obj_file + "\n")
+                            pffw.write("***** Code file: " + code_file + "\n")
+                            pffw.write("***** Compiler output:\n")
+                            pffw.write(output)
+                            if (err):
+                                pffw.write("\n***** Errors:\n")
+                                pffw.write(err)
+                        print("Compile profile written to " + profile_file)
+        except:
+            print("Failed to write compile profile")
 
     def mySubProcess(cmdline, env):
 
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        shell = False
+        # The default spawner for MSVC uses "cmd.exe /C", and if we don't use
+        # shell here, certain commands like "del" will fail to execute
+        if "SCONS_USING_MSVC" in env and env["SCONS_USING_MSVC"]:
+            shell = True
         popen_args = {
             "stdin": subprocess.PIPE,
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "startupinfo": startupinfo,
-            "shell": False,
+            "shell": shell,
             "env": env,
         }
         if sys.version_info >= (3, 7, 0):
             popen_args["text"] = True
-        proc = subprocess.Popen(cmdline, **popen_args)
-        _, err = proc.communicate()
+        proc = subprocess.Popen(str(cmdline), **popen_args)
+        output, err = proc.communicate()
         rv = proc.wait()
         if rv:
             print("=====")
             print(err)
             print("=====")
-        return rv
-
+        return (rv, output, err)
+    
     def mySpawn(sh, escape, cmd, args, env):
 
         newargs = " ".join(args[1:])
         cmdline = cmd + " " + newargs
 
         rv = 0
-        env = {str(key): str(value) for key, value in iter(env.items())}
+        newenv = {str(key): str(value) for key, value in iter(env.items())}
+        # MINGW ar
         if len(cmdline) > 32000 and cmd.endswith("ar"):
             cmdline = cmd + " " + args[1] + " " + args[2] + " "
             for i in range(3, len(args)):
-                rv = mySubProcess(cmdline + args[i], env)
+                rv,output,err = mySubProcess(cmdline + args[i], newenv)
                 if rv:
                     break
         else:
-            rv = mySubProcess(cmdline, env)
-
+            rv,output,err = mySubProcess(cmdline, newenv)
+            if "SCONS_PROFILE_COMPILATION" in env:
+                writeCompilationProfile(cmd, args, env, cmdline, output, err)
         return rv
 
     self["SPAWN"] = mySpawn
