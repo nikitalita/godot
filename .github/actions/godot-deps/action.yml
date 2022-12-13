@@ -27,3 +27,4 @@ runs:
         scons --version
         if [ "$RUNNER_OS" == "Windows" ]; then
           python -m pip install git+https://github.com/wbenny/pydemangler.git@08cf9bc586ba19a8e1bddc2b28f77b605826d7ce
+        fi
