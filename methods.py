@@ -5,7 +5,7 @@ import glob
 import subprocess
 from collections import OrderedDict
 from collections.abc import Mapping
-from typing import Iterator
+from typing import Iterator, List
 
 # Only used for MSVC compile profiling, not required
 try:
@@ -447,9 +447,9 @@ def parse_msvc_profiler_output(output: str):
     anomalistic_func_count: int = 0
     most_hit_section = False
     least_hit_section = False
-    anom_funcs: list[tuple(str, float, int)] = []
-    most_hit_funcs: list[tuple(str, int)] = []
-    least_hit_funcs: list[tuple(str, int)] = []
+    anom_funcs: List[tuple[str, float, int]] = []
+    most_hit_funcs: List[tuple[str, int]] = []
+    least_hit_funcs: List[tuple[str, int]] = []
     for i in range(0, len(lines)):
         _line = lines[i].strip()
         if _line.startswith("time"):
@@ -467,9 +467,9 @@ def parse_msvc_profiler_output(output: str):
             if not _line.startswith("?") or _line.startswith("@"):
                 anomalistic_section = False
             else:
-                # 	?_font_render_range@TextServerAdvanced@Z: 315.485 sec, 196944 instrs
+                # 	?_font_render_range[...]@Z: 315.485 sec, 196944 instrs
                 # - OR -
-                # 	?_font_render_range@TextServerAdvanced@Z: 315.485 sec
+                # 	?_font_render_range[...]@Z: 315.485 sec
                 _spl = _line.split(":")
                 mangled_func = _spl[0]
                 try:
@@ -512,7 +512,7 @@ def parse_msvc_profiler_output(output: str):
                 lines[i] = "\t\t" + func + ": " + str(hits)
                 continue
     demangled_output = "\n".join(lines)
-    return (c1_time, c2_time, demangled_output)
+    return (c1_time, c2_time, demangled_output, anom_funcs)
 
 
 def write_msvc_compiliation_profile(cmd, args, env, cmdline, output, err):
@@ -537,7 +537,7 @@ def write_msvc_compiliation_profile(cmd, args, env, cmdline, output, err):
                 break
         if not profile_file:
             raise
-        c1_time, c2_time, demangled_output = parse_msvc_profiler_output(output)
+        c1_time, c2_time, demangled_output, anom_funcs = parse_msvc_profiler_output(output)
         with open(profile_file, "w") as pffw:
             pffw.write("***** Compile Command: " + cmdline + "\n")
             pffw.write("***** Obj file: " + obj_file + "\n")
@@ -555,9 +555,17 @@ def write_msvc_compiliation_profile(cmd, args, env, cmdline, output, err):
             c1_time,
             c2_time,
         )
-        if c1_time + c2_time > 60.0:
-            perf_string = "!!!! " + perf_string + " !!!!"
-        print()
+        # if the compile time is greater than 40 seconds, print the anomalistic functions
+        if c1_time + c2_time > 40.0:
+            perf_string = "!!!! " + perf_string + " !!!!\n"
+            perf_string += "!!!! Anomalistic functions:\n"
+            for func, time, instrs in anom_funcs:
+                perf_string += "!!!! %s: %0.2f secs" % (func, time)
+                if instrs > 0:
+                    perf_string += ", %d instrs" % instrs
+                perf_string += "\n"
+            perf_string += "!!!! See profiling report for more details: " + profile_file
+        print(perf_string)
 
 
 def use_windows_spawn_fix(self, platform=None):
@@ -589,6 +597,16 @@ def use_windows_spawn_fix(self, platform=None):
         self["ENV"]["SCONS_USING_MSVC"] = "1"
     if "profile_compilation" in self:
         self["ENV"]["SCONS_PROFILE_COMPILATION"] = "1"
+        # test to see if we have pydemangler and that it works
+        try:
+            test = pydemangler.demangle("?Fxi@@YAHP6AHH@Z@Z")
+        except:
+            print("Could not find pydemangler, compilation profiling output will be mangled")
+        else:
+            if not test:
+                print(
+                    "Found pydemangler, but may be configured incorrectly, compilation profiling output will be mangled"
+                )
 
     def mySubProcess(cmdline, env):
 
@@ -638,7 +656,7 @@ def use_windows_spawn_fix(self, platform=None):
                 try:
                     write_msvc_compiliation_profile(cmd, args, env, cmdline, output, err)
                 except:
-                    print("Failed to write profiling data!")
+                    print("Failed to write profiling data for " + cmd)
         return rv
 
     self["SPAWN"] = mySpawn
