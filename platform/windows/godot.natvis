@@ -135,8 +135,8 @@
 
 	<Type Name="String">
 		<DisplayString Condition="_cowdata._ptr == 0">[empty]</DisplayString>
-		<DisplayString Condition="_cowdata._ptr != 0">{_cowdata._ptr}</DisplayString>
-		<StringView Condition="_cowdata._ptr != 0">_cowdata._ptr</StringView>
+		<DisplayString Condition="_cowdata._ptr != 0">{_cowdata._ptr,s32}</DisplayString>
+		<StringView Condition="_cowdata._ptr != 0">_cowdata._ptr,s32</StringView>
 	</Type>
 
 	<Type Name="godot::String">
