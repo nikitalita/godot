@@ -50,6 +50,15 @@
 
 ///
 
+bool ResourceLoaderText::_set_special_handler(String p_res_type, SubResourceHandler p_handler) {
+	if (p_handler) {
+		sub_resource_handlers[p_res_type] = p_handler;
+	} else {
+		sub_resource_handlers.erase(p_res_type);
+	}
+	return true;
+}
+
 Ref<Resource> ResourceLoaderText::get_resource() {
 	return resource;
 }
@@ -530,6 +539,7 @@ Error ResourceLoaderText::load() {
 		}
 
 		MissingResource *missing_resource = nullptr;
+		bool has_handler = sub_resource_handlers.has(type);
 
 		if (res.is_null()) { //not reuse
 			Ref<Resource> cache = ResourceCache::get_ref(path);
@@ -538,10 +548,16 @@ Error ResourceLoaderText::load() {
 				res = cache;
 			} else {
 				//create
+				Object *obj = nullptr;
 
-				Object *obj = ClassDB::instantiate(type);
+				// if this has a special handler, we want to create a missing resource instead and record the properties
+				// the class will be instantiated and the properties will get set by the handler below
+				if (!has_handler) {
+					obj = ClassDB::instantiate(type);
+				}
+
 				if (!obj) {
-					if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
+					if (has_handler || ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
 						missing_resource = memnew(MissingResource);
 						missing_resource->set_original_class(type);
 						missing_resource->set_recording_properties(true);
@@ -646,6 +662,17 @@ Error ResourceLoaderText::load() {
 
 		if (!missing_resource_properties.is_empty()) {
 			res->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
+		}
+
+		if (has_handler) {
+			SubResourceHandler handler = sub_resource_handlers[type];
+			if (handler) {
+				error = handler(missing_resource, res, error_text);
+				if (error) {
+					_printerr();
+					return error;
+				}
+			}
 		}
 	}
 

@@ -32,6 +32,7 @@
 #define RESOURCE_IMPORTER_SCENE_H
 
 #include "core/error/error_macros.h"
+#include "core/io/missing_resource.h"
 #include "core/io/resource_importer.h"
 #include "core/variant/dictionary.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -311,6 +312,8 @@ public:
 
 class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterESCN, EditorSceneFormatImporter);
+
+	static Error convert_animation(Ref<MissingResource> p_res, Ref<Resource> &r_res, String &r_err_str);
 
 public:
 	virtual uint32_t get_import_flags() const override;
