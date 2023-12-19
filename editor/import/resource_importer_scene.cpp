@@ -2759,9 +2759,15 @@ Error EditorSceneFormatImporterESCN::convert_animation(Ref<MissingResource> p_re
 	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
 		print_line(E->get().name);
 	}
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Converts old scene animation format to new one.
+	// get all the properties from the missing resource
+	List<PropertyInfo> properties;
+
 	Vector<Dictionary> tracks;
 	Ref<Animation> animation;
 	animation.instantiate();
+	p_res->get_property_list(&properties);
 	for (const PropertyInfo &prop : properties) {
 		if (prop.name.begins_with("tracks/")) {
 			int id = prop.name.get_slicec('/', 1).to_int();
@@ -2787,7 +2793,8 @@ Error EditorSceneFormatImporterESCN::convert_animation(Ref<MissingResource> p_re
 			int tcount = vcount / 12;
 			if ((vcount % 12) != 0) { // should be multiple of 12
 				r_err_str = "Failed to convert animation: invalid number of keys in transform track.";
-				ERR_FAIL_V(ERR_FILE_CORRUPT);
+				r_err = ERR_FILE_CORRUPT;
+				ERR_FAIL_V(Ref<Resource>());
 			}
 
 			Vector<real_t> position_keys;
@@ -2824,30 +2831,48 @@ Error EditorSceneFormatImporterESCN::convert_animation(Ref<MissingResource> p_re
 				scale_keys.write[j * 5 + 4] = keys[idx++]; // z
 			}
 
-			tracks[i].erase("keys"); // don't copy this huge data structure
-			Dictionary c_track = Dictionary(tracks[i]);
-			int new_idx = i;
+			Dictionary c_track;
+			{
+				auto dict_keys = tracks[i].keys();
+				for (int j = 0; j < dict_keys.size(); j++) {
+					if (dict_keys[j] == "type" || dict_keys[j] == "keys") {
+						continue;
+					}
+					c_track[dict_keys[j]] = tracks[i][dict_keys[j]];
+				}
+			}
+			auto c_track_keys = c_track.keys();
 			tracks.remove_at(i);
-			if (position_keys.size() > 0) {
-				Dictionary track = Dictionary(c_track);
-				track["type"] = "position_3d";
-				track["keys"] = position_keys;
-				tracks.insert(new_idx, track);
-				new_idx++;
+			// scale, then rotation, then position
+			if (scale_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "scale_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = scale_keys;
+				tracks.insert(i, track);
 			}
 			if (rotation_keys.size() > 0) {
-				Dictionary track = Dictionary(c_track);
+				Dictionary track;
 				track["type"] = "rotation_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
 				track["keys"] = rotation_keys;
-				tracks.insert(new_idx, track);
-				new_idx++;
+				tracks.insert(i, track);
 			}
-			if (scale_keys.size() > 0) {
-				Dictionary track = Dictionary(c_track);
-				track["type"] = "scale_3d";
-				track["keys"] = scale_keys;
-				tracks.insert(new_idx, track);
-				new_idx++;
+			if (position_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "position_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+			}
+				track["keys"] = position_keys;
+				tracks.insert(i, track);
 			}
 		}
 	}
@@ -2856,20 +2881,19 @@ Error EditorSceneFormatImporterESCN::convert_animation(Ref<MissingResource> p_re
 		const Dictionary &track = tracks[i];
 		String track_prefix = "tracks/" + itos(i) + "/";
 		animation->set(track_prefix + "type", track["type"]);
-		// iterate over all the keys
+		// iterate over all the dictionary keys
 		TypedArray<String> dict_keys = track.keys();
 		for (int j = 0; j < dict_keys.size(); j++) {
 			const String &key = dict_keys[j];
-			if (key == "type" || key == "keys") {
-				continue;
-			}
+			if (key != "type" && key != "keys") {
 			animation->set(track_prefix + key, track[key]);
+		}
 		}
 		// set keys at the end
 		animation->set(track_prefix + "keys", track["keys"]);
 	}
-	r_res = animation;
-	return OK;
+	r_err = OK;
+	return animation;
 }
 
 uint32_t EditorSceneFormatImporterESCN::get_import_flags() const {
@@ -2888,7 +2912,7 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 	String path = p_path;
 	loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
 	loader.res_path = loader.local_path;
-	loader._set_special_handler("Animation", convert_animation);
+	loader._set_special_handler("Animation", convert_old_animation);
 	loader.open(f);
 	error = loader.load();
 	ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
@@ -2904,7 +2928,18 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		// Ignore the aabb, it will be recomputed.
 		ImporterMeshInstance3D *importer_mesh_3d = memnew(ImporterMeshInstance3D);
 		importer_mesh_3d->set_name(mesh_3d->get_name());
-		importer_mesh_3d->set_transform(mesh_3d->get_relative_transform(mesh_3d->get_parent()));
+		Node *parent = mesh_3d->get_parent();
+		Transform3D rel_transform = mesh_3d->get_relative_transform(parent);
+		if (rel_transform == Transform3D() && parent && parent != mesh_3d) {
+			// Node3D.data.parent hasn't been set yet but Node.data.parent has, so we need to get the transform manually
+			Node3D *parent_3d = mesh_3d->get_parent_node_3d();
+			if (parent == parent_3d) {
+				rel_transform = mesh_3d->get_transform();
+			} else if (parent_3d) {
+				rel_transform = parent_3d->get_relative_transform(parent) * mesh_3d->get_transform();
+			} // otherwise parent isn't a Node3D
+		}
+		importer_mesh_3d->set_transform(rel_transform);
 		importer_mesh_3d->set_skin(mesh_3d->get_skin());
 		importer_mesh_3d->set_skeleton_path(mesh_3d->get_skeleton_path());
 		Ref<ArrayMesh> array_mesh_3d_mesh = mesh_3d->get_mesh();

@@ -121,13 +121,13 @@ private:
 	Ref<PackedScene> _parse_node_tag(VariantParser::ResourceParser &parser);
 
 public:
-	typedef Error (*SubResourceHandler)(Ref<MissingResource> p_res, Ref<Resource> &r_res, String &r_err_str);
+	typedef Ref<Resource> (*SpecialResourceHandler)(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 
 private:
-	HashMap<String, SubResourceHandler> sub_resource_handlers;
+	HashMap<String, SpecialResourceHandler> sub_resource_handlers;
 
 public:
-	bool _set_special_handler(String p_res_type, SubResourceHandler p_handler);
+	bool _set_special_handler(String p_res_type, SpecialResourceHandler p_handler);
 	Ref<Resource> get_resource();
 	Error load();
 	Error set_uid(Ref<FileAccess> p_f, ResourceUID::ID p_uid);

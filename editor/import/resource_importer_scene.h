@@ -313,7 +313,7 @@ public:
 class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterESCN, EditorSceneFormatImporter);
 
-	static Error convert_animation(Ref<MissingResource> p_res, Ref<Resource> &r_res, String &r_err_str);
+	static Ref<Resource> convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 
 public:
 	virtual uint32_t get_import_flags() const override;

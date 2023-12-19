@@ -50,7 +50,7 @@
 
 ///
 
-bool ResourceLoaderText::_set_special_handler(String p_res_type, SubResourceHandler p_handler) {
+bool ResourceLoaderText::_set_special_handler(String p_res_type, SpecialResourceHandler p_handler) {
 	if (p_handler) {
 		sub_resource_handlers[p_res_type] = p_handler;
 	} else {
@@ -590,14 +590,19 @@ Error ResourceLoaderText::load() {
 		}
 
 		int_resources[id] = res; // Always assign int resources.
-		if (do_assign) {
-			if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
-				res->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE);
-			} else if (!path.is_resource_file()) {
-				res->set_path_cache(path);
+
+		// We avoid setting paths until the very end (or during an error return) to avoid
+		// setting paths on resources that special handlers will replace.
+		auto set_res_paths = [&]() {
+			if (do_assign) {
+				if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
+					res->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE);
+				} else if (!path.is_resource_file()) {
+					res->set_path_cache(path);
+				}
+				res->set_scene_unique_id(id);
 			}
-			res->set_scene_unique_id(id);
-		}
+		};
 
 		Dictionary missing_resource_properties;
 
@@ -608,6 +613,7 @@ Error ResourceLoaderText::load() {
 			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp);
 
 			if (error) {
+				set_res_paths();
 				_printerr();
 				return error;
 			}
@@ -649,6 +655,7 @@ Error ResourceLoaderText::load() {
 				error = OK;
 				break;
 			} else {
+				set_res_paths();
 				error = ERR_FILE_CORRUPT;
 				error_text = "Premature end of file while parsing [sub_resource]";
 				_printerr();
@@ -664,16 +671,21 @@ Error ResourceLoaderText::load() {
 			res->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
 		}
 
-		if (has_handler) {
-			SubResourceHandler handler = sub_resource_handlers[type];
+		if (has_handler && missing_resource) { // If this has a special handler, and we didn't load from cache...
+			SpecialResourceHandler handler = sub_resource_handlers[type];
 			if (handler) {
-				error = handler(missing_resource, res, error_text);
-				if (error) {
+				Ref<Resource> srh_res = handler(missing_resource, error, error_text);
+				if (error || srh_res.is_null()) {
+					set_res_paths();
 					_printerr();
-					return error;
+					return error ? error : ERR_PARSE_ERROR;
 				}
+				res = srh_res;
+				int_resources[id] = res;
+				// memdelete(missing_resource);
 			}
 		}
+		set_res_paths();
 	}
 
 	while (true) {
@@ -695,11 +707,15 @@ Error ResourceLoaderText::load() {
 		}
 
 		MissingResource *missing_resource = nullptr;
+		bool has_handler = sub_resource_handlers.has(res_type);
 
 		if (!resource.is_valid()) {
-			Object *obj = ClassDB::instantiate(res_type);
+			Object *obj = nullptr;
+			if (!has_handler) {
+				obj = ClassDB::instantiate(res_type);
+			}
 			if (!obj) {
-				if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
+				if (has_handler || ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
 					missing_resource = memnew(MissingResource);
 					missing_resource->set_original_class(res_type);
 					missing_resource->set_recording_properties(true);
@@ -799,6 +815,18 @@ Error ResourceLoaderText::load() {
 
 		if (!missing_resource_properties.is_empty()) {
 			resource->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
+		}
+		if (has_handler && missing_resource) { // If this has a special handler, and we didn't load from cache...
+			SpecialResourceHandler handler = sub_resource_handlers[res_type];
+			if (handler) {
+				Ref<Resource> srh_res = handler(missing_resource, error, error_text);
+				if (error || srh_res.is_null()) {
+					_printerr();
+					return error;
+				}
+				resource = srh_res;
+				// memdelete(missing_resource);
+			}
 		}
 
 		error = OK;
