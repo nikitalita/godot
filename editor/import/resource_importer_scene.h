@@ -313,6 +313,7 @@ public:
 class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterESCN, EditorSceneFormatImporter);
 
+	static Ref<Resource> convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 	static Ref<Resource> convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 
 public:

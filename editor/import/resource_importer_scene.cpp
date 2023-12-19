@@ -37,6 +37,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_settings.h"
 #include "editor/import/scene_import_settings.h"
+#include "editor/renames_map_3_to_4.h"
 #include "scene/3d/area_3d.h"
 #include "scene/3d/collision_shape_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -55,6 +56,10 @@
 #include "scene/resources/sphere_shape_3d.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/world_boundary_shape_3d.h"
+#include "servers/rendering/shader_language.cpp"
+#ifdef MODULE_REGEX_ENABLED
+#include "modules/regex/regex.h"
+#endif
 
 uint32_t EditorSceneFormatImporter::get_import_flags() const {
 	uint32_t ret;
@@ -2736,29 +2741,75 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 
 ///////////////////////////////////////
 
-Error EditorSceneFormatImporterESCN::convert_animation(Ref<MissingResource> p_res, Ref<Resource> &r_res, String &r_err_str) {
-	// Converts old scene animation format to new one.
-	// get all the properties from the missing resource
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	Ref<Shader> shader;
+	shader.instantiate();
+	// get the props
 	List<PropertyInfo> properties;
-
-	// TODO: remove
-	List<PropertyInfo> properties2;
-	List<PropertyInfo> properties3;
-	ClassDB::get_property_list("Animation", &properties2, true);
-	ClassDB::get_property_list("Animation", &properties3, false);
-	print_line("Animation props (excluding parents):");
-	for (List<PropertyInfo>::Element *E = properties2.front(); E; E = E->next()) {
-		print_line(E->get().name);
-	}
-	print_line("\nAnimation props (including parents):");
-	for (List<PropertyInfo>::Element *E = properties3.front(); E; E = E->next()) {
-		print_line(E->get().name);
-	}
 	p_res->get_property_list(&properties);
-	print_line("What we got:");
+	String code;
 	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
-		print_line(E->get().name);
+		if (E->get().name == "code") {
+			code = p_res->get(E->get().name);
+		} else {
+			shader->set(E->get().name, p_res->get(E->get().name));
+		}
 	}
+	// split into lines
+	Vector<String> lines = code.split("\n");
+
+	// convert the code
+#ifdef MODULE_REGEX_ENABLED
+	LocalVector<RegEx *> shaders_regexes;
+	for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+		shaders_regexes.push_back(memnew(RegEx(String("\\b") + RenamesMap3To4::shaders_renames[current_index][0] + "\\b")));
+	}
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; current_index < shaders_regexes.size(); current_index++) {
+			if (line.contains(RenamesMap3To4::shaders_renames[current_index][0])) {
+				line = shaders_regexes[current_index]->sub(line, RenamesMap3To4::shaders_renames[current_index][1], true);
+			}
+		}
+		lines.write[i] = line;
+	}
+
+#else
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+			int index = line.find(RenamesMap3To4::shaders_renames[current_index][0]);
+			if (index != -1) {
+				int end = index + strnlen(RenamesMap3To4::shaders_renames[current_index][0], 40);
+				// check if we are at a word boundary; check before and after word
+				if ((index == 0 || !is_ascii_identifier_char(line[index - 1])) &&
+						(end == line.length() || !is_ascii_identifier_char(line[end]))) {
+					line = line.replace_first(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
+					// we need to keep checking until we have replaced all instances of the word
+					// decrement current_index so we check this line for this replacement again
+					current_index--;
+				}
+			}
+		}
+
+		lines.write[i] = line;
+	}
+#endif
+
+	String new_code;
+	// join the lines back together
+	for (String line : lines) {
+		new_code += line + "\n";
+	}
+
+	// now we have to replace CLEARCOAT_GLOSS with CLEARCOAT_ROUGHNESS
+	// they changed how this worked in 4.x; the value needs to be inverted
+	// TODO: actually invert the value and handle left hand assignments; for now just replace the name
+	new_code = new_code.replace("CLEARCOAT_GLOSS", "CLEARCOAT_ROUGHNESS");
+	r_err = OK;
+	return shader;
+}
+
 Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
 	// Converts old scene animation format to new one.
 	// get all the properties from the missing resource
@@ -2870,7 +2921,7 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<Mis
 				for (int j = 0; j < c_track_keys.size(); j++) {
 					String key = c_track_keys[j];
 					track[key] = c_track[key];
-			}
+				}
 				track["keys"] = position_keys;
 				tracks.insert(i, track);
 			}
@@ -2886,8 +2937,8 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<Mis
 		for (int j = 0; j < dict_keys.size(); j++) {
 			const String &key = dict_keys[j];
 			if (key != "type" && key != "keys") {
-			animation->set(track_prefix + key, track[key]);
-		}
+				animation->set(track_prefix + key, track[key]);
+			}
 		}
 		// set keys at the end
 		animation->set(track_prefix + "keys", track["keys"]);
@@ -2913,6 +2964,7 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 	loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
 	loader.res_path = loader.local_path;
 	loader._set_special_handler("Animation", convert_old_animation);
+	loader._set_special_handler("Shader", convert_old_shader);
 	loader.open(f);
 	error = loader.load();
 	ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
