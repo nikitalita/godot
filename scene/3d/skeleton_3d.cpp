@@ -100,7 +100,7 @@ bool Skeleton3D::_set(const StringName &p_path, const Variant &p_value) {
 		// Kept for compatibility from 3.x to 4.x.
 		WARN_DEPRECATED_MSG(vformat(
 				"Skeleton uses old pose format, which is deprecated (and loads slower). Consider re-importing or re-saving the scene. Path: \"%s\"",
-				is_inside_tree() ? get_path() : String()));
+				is_inside_tree() ? get_path() : NodePath()));
 		Transform3D pose = p_value;
 		set_bone_pose_position(which, pose.origin);
 		set_bone_pose_rotation(which, pose.basis.get_rotation_quaternion());
