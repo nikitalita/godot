@@ -3039,6 +3039,7 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		Node *parent = mesh_3d->get_parent();
 		Transform3D rel_transform = mesh_3d->get_relative_transform(parent);
 		if (rel_transform == Transform3D() && parent && parent != mesh_3d) {
+			// If we're here, we probably got a "data.parent is null" error
 			// Node3D.data.parent hasn't been set yet but Node.data.parent has, so we need to get the transform manually
 			Node3D *parent_3d = mesh_3d->get_parent_node_3d();
 			if (parent == parent_3d) {
