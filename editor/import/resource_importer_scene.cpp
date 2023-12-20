@@ -30,12 +30,14 @@
 
 #include "resource_importer_scene.h"
 
+#include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/resource_saver.h"
 #include "core/object/script_language.h"
 #include "editor/editor_node.h"
 #include "editor/editor_settings.h"
 #include "editor/import/scene_import_settings.h"
+#include "editor/renames_map_3_to_4.h"
 #include "scene/3d/area_3d.h"
 #include "scene/3d/collision_shape_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -54,6 +56,10 @@
 #include "scene/resources/sphere_shape_3d.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/world_boundary_shape_3d.h"
+#include "servers/rendering/shader_language.h"
+#ifdef MODULE_REGEX_ENABLED
+#include "modules/regex/regex.h"
+#endif
 
 uint32_t EditorSceneFormatImporter::get_import_flags() const {
 	uint32_t ret;
@@ -2734,6 +2740,106 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 }
 
 ///////////////////////////////////////
+
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	Ref<Shader> shader;
+	shader.instantiate();
+	// get the props
+	List<PropertyInfo> properties;
+	p_res->get_property_list(&properties);
+	String code;
+	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
+		if (E->get().name == "code") {
+			code = p_res->get(E->get().name);
+		} else {
+			shader->set(E->get().name, p_res->get(E->get().name));
+		}
+	}
+	// split into lines
+	Vector<String> lines = code.split("\n");
+
+	// convert the code
+#ifdef MODULE_REGEX_ENABLED
+	LocalVector<RegEx *> shaders_regexes;
+	for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+		shaders_regexes.push_back(memnew(RegEx(String("\\b") + RenamesMap3To4::shaders_renames[current_index][0] + "\\b")));
+	}
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; current_index < shaders_regexes.size(); current_index++) {
+			if (line.contains(RenamesMap3To4::shaders_renames[current_index][0])) {
+				line = shaders_regexes[current_index]->sub(line, RenamesMap3To4::shaders_renames[current_index][1], true);
+			}
+		}
+		lines.write[i] = line;
+	}
+
+#else
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+			int index = line.find(RenamesMap3To4::shaders_renames[current_index][0]);
+			if (index != -1) {
+				int end = index + strnlen(RenamesMap3To4::shaders_renames[current_index][0], 40);
+				// check if we are at a word boundary; check before and after word
+				if ((index == 0 || !is_ascii_identifier_char(line[index - 1])) &&
+						(end == line.length() || !is_ascii_identifier_char(line[end]))) {
+					line = line.replace_first(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
+					// we need to keep checking until we have replaced all instances of the word
+					// decrement current_index so we check this line for this replacement again
+					current_index--;
+				}
+			}
+		}
+
+		lines.write[i] = line;
+	}
+#endif
+
+	String new_code;
+	// join the lines back together
+	for (String line : lines) {
+		new_code += line + "\n";
+	}
+
+	// now we have to replace CLEARCOAT_GLOSS with CLEARCOAT_ROUGHNESS
+	// The functionality changed 4.x; CLEARCOAT_GLOSS increasing values mean glossier, but CLEARCOAT_ROUGHNESS increasing values mean less glossy
+	// The value needs to be inverted
+	/**
+	 * examples that we need to handle:
+	 * ```
+	 * CLEARCOAT_GLOSS = 0.5;                    // translate to CLEARCOAT_ROUGHNESS = (1.0 - 0.5);
+	 * CLEARCOAT_GLOSS /= 5.0;                   // translate to CLEARCOAT_ROUGHNESS *= 5.0;
+	 * CLEARCOAT_GLOSS *= 5.0;                   // translate to CLEARCOAT_ROUGHNESS /= 5.0;
+	 * CLEARCOAT_GLOSS += 0.5;                   // translate to CLEARCOAT_ROUGHNESS -= 0.5;
+	 * CLEARCOAT_GLOSS -= 0.5;                   // translate to CLEARCOAT_ROUGHNESS += 0.5;
+	 * float foo = CLEARCOAT_GLOSS;              // translate to float foo = (1.0 - CLEARCOAT_ROUGHNESS);
+	 * float bar = foo + CLEARCOAT_GLOSS;        // translate to float bar = foo + (1.0 - CLEARCOAT_ROUGHNESS);
+	 * float baz = foo + CLEARCOAT_GLOSS *= 5.0; // translate to float baz = foo + (1.0 - (CLEARCOAT_ROUGHNESS /= 5.0));
+	 * float bass = foo + CLEARCOAT_GLOSS / 5.0; // translate to float baz = foo + (1.0 - CLEARCOAT_ROUGHNESS) / 5.0;
+	 * float qux = foo + CLEARCOAT_GLOSS /= 5.0; // translate to float qux = foo + (1.0 - (CLEARCOAT_ROUGHNESS *= 5.0));
+	 * ```
+	 *
+	 * Another hard example:
+	 *
+	 * ```
+	 * float barf = foo /= bar - 2.0 + CLEARCOAT_GLOSS // unnecessary comment before line end with unnecessary semicolons ;;;;
+	 *                        *= baz / 2.0 * bar /= foo;
+	 * ```
+	 * Translates to:
+	 * ```
+	 * float barf = foo *= bar - 2.0 + (1.0 - (CLEARCOAT_ROUGHNESS // unnecessary comment before line end with unnecessary semicolons ;;;;
+	 * 					  /= baz / 2.0 * bar /= foo));
+	 * ```
+	 */
+	// TODO: actually invert the value and handle left hand assignments; for now just replace the name
+	new_code = new_code.replace("CLEARCOAT_GLOSS", "CLEARCOAT_ROUGHNESS");
+
+	shader->set_code(new_code);
+	r_err = OK;
+	return shader;
+}
+
 Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
 	// Converts old scene animation format to new one.
 	// get all the properties from the missing resource
@@ -2910,6 +3016,7 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
 		loader.res_path = loader.local_path;
 		loader._set_special_handler("Animation", convert_old_animation);
+		loader._set_special_handler("Shader", convert_old_shader);
 		loader.open(f);
 		error = loader.load();
 		ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
