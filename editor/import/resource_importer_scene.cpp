@@ -56,7 +56,7 @@
 #include "scene/resources/sphere_shape_3d.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/world_boundary_shape_3d.h"
-#include "servers/rendering/shader_language.cpp"
+#include "servers/rendering/shader_language.h"
 #ifdef MODULE_REGEX_ENABLED
 #include "modules/regex/regex.h"
 #endif
@@ -2806,6 +2806,7 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 	// they changed how this worked in 4.x; the value needs to be inverted
 	// TODO: actually invert the value and handle left hand assignments; for now just replace the name
 	new_code = new_code.replace("CLEARCOAT_GLOSS", "CLEARCOAT_ROUGHNESS");
+	shader->set_code(new_code);
 	r_err = OK;
 	return shader;
 }
