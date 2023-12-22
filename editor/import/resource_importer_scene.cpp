@@ -2990,7 +2990,6 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 	p_player->get_animation_list(&anims);
 	Node *parent = p_player->get_parent();
 	ERR_FAIL_NULL(parent);
-	bool tracks_to_add = false;
 
 	// we iterate over all the animations in the player, then all the tracks in the player
 	// if it is position, rotation, or scale, we get the skeleton path and the bone name
@@ -3016,16 +3015,9 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 				if (bone_idx == -1) {
 					continue;
 				}
-				// Note that this is using get_bone_pose to update the bone pose cache.
-				_ALLOW_DISCARD_ skel->get_bone_pose(bone_idx);
-				Vector3 loc = skel->get_bone_pose_position(bone_idx);
-				Quaternion rot = skel->get_bone_pose_rotation(bone_idx);
-				Vector3 scale = skel->get_bone_pose_scale(bone_idx);
 
 				Transform3D rest = skel->get_bone_rest(bone_idx);
 				for (int j = 0; j < anim->track_get_key_count(i); j++) {
-					float time = anim->track_get_key_time(i, j);
-					float transition = anim->track_get_key_transition(i, j);
 					Variant val;
 					if (track_type == Animation::TYPE_POSITION_3D) {
 						Vector3 a_pos = anim->track_get_key_value(i, j);
@@ -3036,7 +3028,6 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 					} else if (track_type == Animation::TYPE_ROTATION_3D) {
 						Quaternion q = anim->track_get_key_value(i, j);
 						Transform3D t = Transform3D();
-						Basis b = Basis(q);
 						t.basis.rotate(q);
 						Quaternion new_q = (rest * t).basis.get_rotation_quaternion();
 						anim->track_set_key_value(i, j, new_q);
@@ -3048,7 +3039,6 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 						anim->track_set_key_value(i, j, new_v);
 					}
 				}
-				tracks_to_add = true;
 			}
 		}
 	}
