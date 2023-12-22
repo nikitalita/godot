@@ -44,6 +44,7 @@ class ResourceLoaderText {
 public:
 	String local_path;
 	String res_path;
+	ResourceFormatLoader::CacheMode cache_mode = ResourceFormatLoader::CACHE_MODE_REUSE;
 
 private:
 	String error_text;
@@ -72,8 +73,6 @@ private:
 	String script_class;
 
 	VariantParser::Tag next_tag;
-
-	ResourceFormatLoader::CacheMode cache_mode = ResourceFormatLoader::CACHE_MODE_REUSE;
 
 	bool use_sub_threads = false;
 	float *progress = nullptr;

@@ -2796,12 +2796,6 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 	}
 #endif
 
-	String new_code;
-	// join the lines back together
-	for (String line : lines) {
-		new_code += line + "\n";
-	}
-
 	// now we have to replace CLEARCOAT_GLOSS with CLEARCOAT_ROUGHNESS
 	// The functionality changed 4.x; CLEARCOAT_GLOSS increasing values mean glossier, but CLEARCOAT_ROUGHNESS increasing values mean less glossy
 	// The value needs to be inverted
@@ -2990,6 +2984,7 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<Mis
 	return animation;
 }
 
+// Converts old 3.x animations transforms relative to the bone rest to absolute.
 void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer *p_player) {
 	List<StringName> anims;
 	p_player->get_animation_list(&anims);
@@ -3002,9 +2997,6 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 	// then we get the node at the skeleton path, and get the bone index from the bone name
 	// we then get the rest position, rotation, or scale from the skeleton
 	// then we iterate over all the keys in the track, and multiply the key * rest position, rotation, or scale and assign it to the key
-
-	p_player->get_animation_list(&anims);
-
 	for (List<StringName>::Element *E = anims.front(); E; E = E->next()) {
 		StringName anim_name = E->get();
 		Ref<Animation> anim = p_player->get_animation(anim_name);
@@ -3036,15 +3028,23 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 					float transition = anim->track_get_key_transition(i, j);
 					Variant val;
 					if (track_type == Animation::TYPE_POSITION_3D) {
-						Vector3 v = anim->track_get_key_value(i, j);
-						anim->track_set_key_value(i, j, rest.translated(v).origin);
+						Vector3 a_pos = anim->track_get_key_value(i, j);
+						Transform3D t = Transform3D();
+						t.set_origin(a_pos);
+						Vector3 new_a_pos = (rest * t).origin;
+						anim->track_set_key_value(i, j, new_a_pos);
 					} else if (track_type == Animation::TYPE_ROTATION_3D) {
 						Quaternion q = anim->track_get_key_value(i, j);
-						auto new_q = rest.basis.rotated(q).get_rotation_quaternion();
+						Transform3D t = Transform3D();
+						Basis b = Basis(q);
+						t.basis.rotate(q);
+						Quaternion new_q = (rest * t).basis.get_rotation_quaternion();
 						anim->track_set_key_value(i, j, new_q);
 					} else if (track_type == Animation::TYPE_SCALE_3D) {
 						Vector3 v = anim->track_get_key_value(i, j);
-						Vector3 new_v = rest.scaled(v).basis.get_scale();
+						Transform3D t = Transform3D();
+						t.scale(v);
+						Vector3 new_v = (rest * t).basis.get_scale(); // is this right? I have no idea how 3d works :pensive:
 						anim->track_set_key_value(i, j, new_v);
 					}
 				}
@@ -3094,6 +3094,7 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		String path = p_path;
 		loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
 		loader.res_path = loader.local_path;
+		loader.cache_mode = ResourceFormatLoader::CACHE_MODE_IGNORE; // So we don't recalculate the animations twice
 		loader._set_special_handler("Animation", convert_old_animation);
 		loader._set_special_handler("Shader", convert_old_shader);
 		loader.open(f);
