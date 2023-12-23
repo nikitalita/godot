@@ -30,12 +30,14 @@
 
 #include "resource_importer_scene.h"
 
+#include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/resource_saver.h"
 #include "core/object/script_language.h"
 #include "editor/editor_node.h"
 #include "editor/editor_settings.h"
 #include "editor/import/scene_import_settings.h"
+#include "editor/renames_map_3_to_4.h"
 #include "scene/3d/area_3d.h"
 #include "scene/3d/collision_shape_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -54,6 +56,10 @@
 #include "scene/resources/sphere_shape_3d.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/world_boundary_shape_3d.h"
+#include "servers/rendering/shader_language.h"
+#ifdef MODULE_REGEX_ENABLED
+#include "modules/regex/regex.h"
+#endif
 
 uint32_t EditorSceneFormatImporter::get_import_flags() const {
 	uint32_t ret;
@@ -2735,6 +2741,352 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 
 ///////////////////////////////////////
 
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Shader conversion
+	// 3.x shaders will fail to compile with the 4.x compiler
+	// This is done upon `set_code()` during resource load, and this will result in errors when loading normally
+	Ref<Shader> shader;
+	shader.instantiate();
+	// get the props
+	List<PropertyInfo> properties;
+	p_res->get_property_list(&properties);
+	String code;
+	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
+		if (E->get().name == "code") {
+			code = p_res->get(E->get().name);
+		} else {
+			shader->set(E->get().name, p_res->get(E->get().name));
+		}
+	}
+	// split into lines
+	Vector<String> lines = code.split("\n");
+
+	// convert the code
+#ifdef MODULE_REGEX_ENABLED
+	LocalVector<RegEx *> shaders_regexes;
+	for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+		shaders_regexes.push_back(memnew(RegEx(String("\\b") + RenamesMap3To4::shaders_renames[current_index][0] + "\\b")));
+	}
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; current_index < shaders_regexes.size(); current_index++) {
+			if (line.contains(RenamesMap3To4::shaders_renames[current_index][0])) {
+				line = shaders_regexes[current_index]->sub(line, RenamesMap3To4::shaders_renames[current_index][1], true);
+			}
+		}
+		lines.write[i] = line;
+	}
+
+#else
+	for (int i = 0; i < lines.size(); i++) {
+		String line = lines[i];
+		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+			int index = line.find(RenamesMap3To4::shaders_renames[current_index][0]);
+			if (index != -1) {
+				int end = index + strnlen(RenamesMap3To4::shaders_renames[current_index][0], 40);
+				// check if we are at a word boundary; check before and after word
+				if ((index == 0 || !is_ascii_identifier_char(line[index - 1])) &&
+						(end == line.length() || !is_ascii_identifier_char(line[end]))) {
+					line = line.replace_first(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
+					// we need to keep checking until we have replaced all instances of the word
+					// decrement current_index so we check this line for this replacement again
+					current_index--;
+				}
+			}
+		}
+
+		lines.write[i] = line;
+	}
+#endif
+
+	// now we have to replace CLEARCOAT_GLOSS with CLEARCOAT_ROUGHNESS
+	// The functionality changed 4.x; CLEARCOAT_GLOSS increasing values mean glossier, but CLEARCOAT_ROUGHNESS increasing values mean less glossy
+	// The value needs to be inverted
+	/**
+	 * examples that we need to handle:
+	 * ```
+	 * CLEARCOAT_GLOSS = 0.5;                    // translate to CLEARCOAT_ROUGHNESS = (1.0 - 0.5);
+	 * CLEARCOAT_GLOSS /= 5.0;                   // translate to CLEARCOAT_ROUGHNESS *= 5.0;
+	 * CLEARCOAT_GLOSS *= 5.0;                   // translate to CLEARCOAT_ROUGHNESS /= 5.0;
+	 * CLEARCOAT_GLOSS += 0.5;                   // translate to CLEARCOAT_ROUGHNESS -= 0.5;
+	 * CLEARCOAT_GLOSS -= 0.5;                   // translate to CLEARCOAT_ROUGHNESS += 0.5;
+	 * float foo = CLEARCOAT_GLOSS;              // translate to float foo = (1.0 - CLEARCOAT_ROUGHNESS);
+	 * float bar = foo + CLEARCOAT_GLOSS;        // translate to float bar = foo + (1.0 - CLEARCOAT_ROUGHNESS);
+	 * float baz = foo + CLEARCOAT_GLOSS *= 5.0; // translate to float baz = foo + (1.0 - (CLEARCOAT_ROUGHNESS /= 5.0));
+	 * float bass = foo + CLEARCOAT_GLOSS / 5.0; // translate to float baz = foo + (1.0 - CLEARCOAT_ROUGHNESS) / 5.0;
+	 * float qux = foo + CLEARCOAT_GLOSS /= 5.0; // translate to float qux = foo + (1.0 - (CLEARCOAT_ROUGHNESS *= 5.0));
+	 * ```
+	 *
+	 * Another hard example:
+	 *
+	 * ```
+	 * float barf = foo /= bar - 2.0 + CLEARCOAT_GLOSS // unnecessary comment before line end with unnecessary semicolons ;;;;
+	 *                        *= baz / 2.0 * bar /= foo;
+	 * ```
+	 * Translates to:
+	 * ```
+	 * float barf = foo *= bar - 2.0 + (1.0 - (CLEARCOAT_ROUGHNESS // unnecessary comment before line end with unnecessary semicolons ;;;;
+	 * 					  /= baz / 2.0 * bar /= foo));
+	 * ```
+	 */
+
+	String new_code;
+	for (int i = 0; i < lines.size(); i++) {
+		if (lines[i].contains("CLEARCOAT_GLOSS")) {
+			// TODO: for right now, a very simple way to handle all of this; we really should be doing all of the above
+			// but this is a quick and dirty way to get it working
+			lines.insert(i + 1, "CLEARCOAT_ROUGHNESS = (1.0 - CLEARCOAT_GLOSS);");
+			lines.insert(i, "float CLEARCOAT_GLOSS = (1.0 - CLEARCOAT_ROUGHNESS);");
+			i += 2;
+		}
+	}
+	// join the lines back together
+	for (String line : lines) {
+		new_code += line + "\n";
+	}
+
+	shader->set_code(new_code);
+	r_err = OK;
+	return shader;
+}
+
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Converts old scene animation format
+	// `transform` track type was removed in 4.x and will result in loading errors if loaded normally
+	// We need to convert any `transform` tracks to separate position, rotation, and scale tracks
+	List<PropertyInfo> properties;
+	Vector<Dictionary> tracks;
+	Ref<Animation> animation;
+	animation.instantiate();
+	p_res->get_property_list(&properties);
+	for (const PropertyInfo &prop : properties) {
+		if (prop.name.begins_with("tracks/")) {
+			int id = prop.name.get_slicec('/', 1).to_int();
+			while (id >= tracks.size()) {
+				tracks.push_back(Dictionary());
+			}
+			tracks.write[id][prop.name.get_slicec('/', 2)] = p_res->get(prop.name);
+		} else {
+			animation->set(prop.name, p_res->get(prop.name));
+		}
+	}
+	for (int i = 0; i < tracks.size(); i++) {
+		// now that we have all the tracks, we need to split the transform tracks into separate tracks
+		// this is because the current animation player doesn't support transform tracks
+		// so we need to split them into separate position, rotation, and scale tracks
+		// TODO: we also need to split the blend shape tracks into separate tracks
+		if (tracks[i].has("type") && tracks[i]["type"] == "transform") {
+			// split the transform track into separate tracks
+
+			// Old scene format only used 32-bit floats, did not have configurable real_t.
+			Vector<float> keys = tracks[i]["keys"];
+			int vcount = keys.size();
+			int tcount = vcount / 12;
+			if ((vcount % 12) != 0) { // should be multiple of 12
+				r_err_str = "Failed to convert animation: invalid number of keys in transform track.";
+				r_err = ERR_FILE_CORRUPT;
+				ERR_FAIL_V(Ref<Resource>());
+			}
+
+			Vector<real_t> position_keys;
+			Vector<real_t> rotation_keys;
+			Vector<real_t> scale_keys;
+			position_keys.resize(tcount * 5); // time + transition + xyz
+			rotation_keys.resize(tcount * 6); // time + transition + xyzw
+			scale_keys.resize(tcount * 5); // time + transition + xyz
+			// split the keys into separate tracks
+			for (int j = 0; j < tcount; j++) {
+				// it's position (Vector3, xyz), then rotation (Quaternion, xyzw), then scale (Vector3, xyz)
+				// each track has time and transition values, so get those
+				const float *ofs = &(keys.ptr()[j * 12]);
+				float time = ofs[0];
+				float transition = ofs[1];
+
+				position_keys.write[j * 5 + 0] = time;
+				position_keys.write[j * 5 + 1] = transition;
+				position_keys.write[j * 5 + 2] = ofs[2]; // x
+				position_keys.write[j * 5 + 3] = ofs[3]; // y
+				position_keys.write[j * 5 + 4] = ofs[4]; // z
+
+				rotation_keys.write[j * 6 + 0] = time;
+				rotation_keys.write[j * 6 + 1] = transition;
+				rotation_keys.write[j * 6 + 2] = ofs[5]; // x
+				rotation_keys.write[j * 6 + 3] = ofs[6]; // y
+				rotation_keys.write[j * 6 + 4] = ofs[7]; // z
+				rotation_keys.write[j * 6 + 5] = ofs[8]; // w
+
+				scale_keys.write[j * 5 + 0] = time;
+				scale_keys.write[j * 5 + 1] = transition;
+				scale_keys.write[j * 5 + 2] = ofs[9]; // x
+				scale_keys.write[j * 5 + 3] = ofs[10]; // y
+				scale_keys.write[j * 5 + 4] = ofs[11]; // z
+			}
+
+			Dictionary c_track;
+			{
+				auto dict_keys = tracks[i].keys();
+				for (int j = 0; j < dict_keys.size(); j++) {
+					if (dict_keys[j] == "type" || dict_keys[j] == "keys") {
+						continue;
+					}
+					c_track[dict_keys[j]] = tracks[i][dict_keys[j]];
+				}
+			}
+			auto c_track_keys = c_track.keys();
+			tracks.remove_at(i);
+			// scale, then rotation, then position
+			if (scale_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "scale_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = scale_keys;
+				tracks.insert(i, track);
+			}
+			if (rotation_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "rotation_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = rotation_keys;
+				tracks.insert(i, track);
+			}
+			if (position_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "position_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = position_keys;
+				tracks.insert(i, track);
+			}
+		}
+	}
+	// now, set all the track data
+	for (int i = 0; i < tracks.size(); i++) {
+		const Dictionary &track = tracks[i];
+		String track_prefix = "tracks/" + itos(i) + "/";
+		animation->set(track_prefix + "type", track["type"]);
+		// iterate over all the dictionary keys
+		TypedArray<String> dict_keys = track.keys();
+		for (int j = 0; j < dict_keys.size(); j++) {
+			const String &key = dict_keys[j];
+			if (key != "type" && key != "keys") {
+				animation->set(track_prefix + key, track[key]);
+			}
+		}
+		// set keys at the end
+		animation->set(track_prefix + "keys", track["keys"]);
+	}
+	r_err = OK;
+	return animation;
+}
+
+// Converts old 3.x animations transforms relative to the bone rest to absolute.
+void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer *p_player) {
+	List<StringName> anims;
+	p_player->get_animation_list(&anims);
+	Node *parent = p_player->get_parent();
+	ERR_FAIL_NULL(parent);
+
+	// we iterate over all the animations in the player, then all the tracks in the player
+	// if it is position, rotation, or scale, we get the skeleton path and the bone name
+	// then we get the node at the skeleton path, and get the bone index from the bone name
+	// we then get the rest position, rotation, or scale from the skeleton
+	// then we iterate over all the keys in the track, and multiply the key * rest position, rotation, or scale and assign it to the key
+	for (List<StringName>::Element *E = anims.front(); E; E = E->next()) {
+		StringName anim_name = E->get();
+		Ref<Animation> anim = p_player->get_animation(anim_name);
+		ERR_CONTINUE(anim.is_null());
+		for (int i = 0; i < anim->get_track_count(); i++) {
+			int track_type = anim->track_get_type(i);
+			if (track_type == Animation::TYPE_POSITION_3D || track_type == Animation::TYPE_ROTATION_3D || track_type == Animation::TYPE_SCALE_3D) {
+				NodePath path = anim->track_get_path(i);
+				Node *node = parent->get_node(path);
+				if (!node) {
+					continue;
+				}
+				Skeleton3D *skel = Object::cast_to<Skeleton3D>(node);
+				ERR_CONTINUE(!skel);
+
+				StringName bone = path.get_subname(0);
+				int bone_idx = skel->find_bone(bone);
+				if (bone_idx == -1) {
+					continue;
+				}
+
+				Transform3D rest = skel->get_bone_rest(bone_idx);
+				for (int j = 0; j < anim->track_get_key_count(i); j++) {
+					Variant val;
+					if (track_type == Animation::TYPE_POSITION_3D) {
+						Vector3 a_pos = anim->track_get_key_value(i, j);
+						Transform3D t = Transform3D();
+						t.set_origin(a_pos);
+						Vector3 new_a_pos = (rest * t).origin;
+						anim->track_set_key_value(i, j, new_a_pos);
+					} else if (track_type == Animation::TYPE_ROTATION_3D) {
+						Quaternion q = anim->track_get_key_value(i, j);
+						Transform3D t = Transform3D();
+						t.basis.rotate(q);
+						Quaternion new_q = (rest * t).basis.get_rotation_quaternion();
+						anim->track_set_key_value(i, j, new_q);
+					} else if (track_type == Animation::TYPE_SCALE_3D) {
+						Vector3 v = anim->track_get_key_value(i, j);
+						Transform3D t = Transform3D();
+						t.scale(v);
+						Vector3 new_v = (rest * t).basis.get_scale(); // is this right? I have no idea how 3d works :pensive:
+						anim->track_set_key_value(i, j, new_v);
+					}
+				}
+			}
+		}
+	}
+}
+
+void EditorSceneFormatImporterESCN::_fix_old_format_scene(Node *scene) {
+	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
+	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
+		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
+		auto skel_path = mesh_3d->get_skeleton_path();
+		Node *skel_node = skel_path.is_absolute() ? scene->get_node(skel_path) : mesh_3d->get_node(skel_path);
+		if (skel_node) {
+			Skeleton3D *skel = Object::cast_to<Skeleton3D>(skel_node);
+			if (!skel) {
+				WARN_PRINT("MeshInstance3D.skeleton_path is not a Skeleton3D.");
+				continue;
+			}
+			// Checking to see if the `pose` parameter was not set in the imported skeleton bones
+			// 3.x did not export skeletons with the `pose` parameter set if `pose == Transform3D()`
+			// If it wasn't, we need to set it to the rest pose if `rest != Transform3D()`
+			// poses were relative to the rests in 3.x, but they're absolute in 4.x
+			for (int i = 0; i < skel->get_bone_count(); i++) {
+				Transform3D rest = skel->get_bone_rest(i);
+				Vector3 pos = skel->get_bone_pose_position(i);
+				Quaternion rot = skel->get_bone_pose_rotation(i);
+				Vector3 scale = skel->get_bone_pose_scale(i);
+				if (rest != Transform3D() && pos == Vector3() && rot == Quaternion() && scale == Vector3(1, 1, 1)) {
+					// we need to set the position, rotation, and scale to the rest position, rotation, and scale
+					skel->set_bone_pose_position(i, rest.origin);
+					skel->set_bone_pose_rotation(i, rest.basis.get_rotation_quaternion());
+					skel->set_bone_pose_scale(i, rest.basis.get_scale());
+				}
+			}
+		}
+	}
+	// 3.x animations keyframe transforms were similarly relative to the `rest` pose
+	// need to convert them to absolute
+	TypedArray<Node> skel_nodes = scene->find_children("*", "AnimationPlayer");
+	for (int32_t node_i = 0; node_i < skel_nodes.size(); node_i++) {
+		AnimationPlayer *player = cast_to<AnimationPlayer>(skel_nodes[node_i]);
+		_recompute_animation_tracks(player);
+	}
+}
+
 uint32_t EditorSceneFormatImporterESCN::get_import_flags() const {
 	return IMPORT_SCENE;
 }
@@ -2743,12 +3095,55 @@ void EditorSceneFormatImporterESCN::get_extensions(List<String> *r_extensions) c
 	r_extensions->push_back("escn");
 }
 
+int get_text_format_version(String p_path) {
+	Error error;
+	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &error);
+	ERR_FAIL_COND_V_MSG(error != OK || f.is_null(), -1, "Cannot open file '" + p_path + "'.");
+	String line = f->get_line().strip_edges();
+	// skip empty lines and comments
+	while (line.is_empty() || line.begins_with(";")) {
+		line = f->get_line().strip_edges();
+		if (f->eof_reached())
+			break;
+	}
+	int format_index = line.find("format");
+	ERR_FAIL_COND_V_MSG(format_index == -1, -1, "No format specifier in file '" + p_path + "'.");
+	String format_str = line.substr(format_index).get_slicec('=', 1).strip_edges();
+	ERR_FAIL_COND_V_MSG(!format_str.substr(0, 1).is_numeric(), -1, "Invalid format in file '" + p_path + "'.");
+	int format = format_str.to_int();
+	return format;
+}
+
 Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err) {
 	Error error;
-	Ref<PackedScene> ps = ResourceFormatLoaderText::singleton->load(p_path, p_path, &error);
+	Ref<PackedScene> ps;
+
+	int format = get_text_format_version(p_path);
+	ERR_FAIL_COND_V(format == -1, nullptr);
+	if (format == 2) { // 3.x escn export
+		Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &error);
+		ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot open file '" + p_path + "'.");
+		ResourceLoaderText loader;
+		String path = p_path;
+		loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
+		loader.res_path = loader.local_path;
+		loader.cache_mode = ResourceFormatLoader::CACHE_MODE_IGNORE; // So we don't recalculate the animations twice
+		loader._set_special_handler("Animation", convert_old_animation);
+		loader._set_special_handler("Shader", convert_old_shader);
+		loader.open(f);
+		error = loader.load();
+		ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
+		ps = loader.get_resource();
+	} else {
+		ps = ResourceFormatLoaderText::singleton->load(p_path, p_path, &error);
+	}
 	ERR_FAIL_COND_V_MSG(!ps.is_valid(), nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
 	Node *scene = ps->instantiate();
+	ERR_FAIL_COND_V(!scene, nullptr);
 	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
+	if (format == 2) {
+		_fix_old_format_scene(scene);
+	}
 	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
 		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
 		Ref<ImporterMesh> mesh;
@@ -2756,9 +3151,22 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		// Ignore the aabb, it will be recomputed.
 		ImporterMeshInstance3D *importer_mesh_3d = memnew(ImporterMeshInstance3D);
 		importer_mesh_3d->set_name(mesh_3d->get_name());
-		importer_mesh_3d->set_transform(mesh_3d->get_relative_transform(mesh_3d->get_parent()));
-		importer_mesh_3d->set_skin(mesh_3d->get_skin());
+		Node *parent = mesh_3d->get_parent();
+		Transform3D rel_transform = mesh_3d->get_relative_transform(parent);
+		if (rel_transform == Transform3D() && parent && parent != mesh_3d) {
+			// If we're here, we probably got a "data.parent is null" error
+			// Node3D.data.parent hasn't been set yet but Node.data.parent has, so we need to get the transform manually
+			Node3D *parent_3d = mesh_3d->get_parent_node_3d();
+			if (parent == parent_3d) {
+				rel_transform = mesh_3d->get_transform();
+			} else if (parent_3d) {
+				rel_transform = parent_3d->get_relative_transform(parent) * mesh_3d->get_transform();
+			} // otherwise parent isn't a Node3D
+		}
+		importer_mesh_3d->set_transform(rel_transform);
+		Ref<Skin> skin = mesh_3d->get_skin();
 		importer_mesh_3d->set_skeleton_path(mesh_3d->get_skeleton_path());
+		importer_mesh_3d->set_skin(skin);
 		Ref<ArrayMesh> array_mesh_3d_mesh = mesh_3d->get_mesh();
 		if (array_mesh_3d_mesh.is_valid()) {
 			// For the MeshInstance3D nodes, we need to convert the ArrayMesh to an ImporterMesh specially.
@@ -2798,8 +3206,6 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 			continue;
 		}
 	}
-
-	ERR_FAIL_NULL_V(scene, nullptr);
 
 	return scene;
 }
