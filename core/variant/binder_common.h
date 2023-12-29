@@ -227,7 +227,7 @@ struct VariantObjectClassChecker {
 		using TStripped = std::remove_pointer_t<T>;
 		if constexpr (std::is_base_of<Object, TStripped>::value) {
 			Object *obj = p_variant;
-			return Object::cast_to<TStripped>(p_variant) || !obj;
+			return !obj || Object::cast_to<TStripped>(p_variant);
 		} else {
 			return true;
 		}
