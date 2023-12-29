@@ -2748,29 +2748,31 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	 *	* the usage of SCREEN_TEXTURE, DEPTH_TEXTURE, and NORMAL_ROUGHNESS_TEXTURE necessitates adding a uniform declaration at the top of the file
 	 *	* async_visible and async_hidden render modes need to be removed
 	 *	* If shader_type is "particles", need to rename the function "void vertex()" to "void process()"
-	 *	* If shader_type is "particles", need to rename the function "void fragment()" to "void process_fragment()"
 	 *  * Invert all usages of CLEARCOAT_GLOSS
-	 *    * invert all lefthand assignments; change += to -= and *= to /=, or if `=`, wrap in `(1.0 - (*))`
+	 *    * invert all lefthand assignments
 	 * 			- `CLEARCOAT_GLOSS = 5.0 / foo;`
 	 * 			becomes: `CLEARCOAT_ROUGHNESS = (1.0 - (5.0 / foo));`,
 	 *          - `CLEARCOAT_GLOSS *= 1.1;`
-	 * 			becomes `CLEARCOAT_ROUGHNESS /= 1.1;`
+	 * 			becomes `CLEARCOAT_ROUGHNESS = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) * 1.1));`
 	 *    * invert all righthand usages
 	 * 			- `foo = CLEARCOAT_GLOSS;`
 	 * 			becomes: `foo = (1.0 - CLEARCOAT_ROUGHNESS);`
-	 *	* specular_blinn and specular_phong render modes throw an error
-	 *	* use of `MODULATE` throws an error
+	 *	* Check for use of `specular_blinn` and `specular_phong` render modes; not supported in 4.x, throw an error
+	 *	* Check for use of `MODULATE`; not supported in 4.x, throw an error
 	 */
-#define SDCONV_COND_FAIL(cond, msg)                             \
-	if (cond) {                                                 \
-		r_err_str = "Shader conversion failed: " + String(msg); \
-		return "";                                              \
+#define SDCONV_COND_FAIL(cond, msg)                                 \
+	if (cond) {                                                     \
+		r_err_str = "3.x Shader conversion failed: " + String(msg); \
+		return "";                                                  \
 	}
-#define SDCONV_COND_LINE_FAIL(cond, line, msg)                                           \
-	if (cond) {                                                                          \
-		r_err_str = "Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
-		return "";                                                                       \
+#define SDCONV_COND_LINE_FAIL(cond, line, msg)                                               \
+	if (cond) {                                                                              \
+		r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
+		return "";                                                                           \
 	}
+#define SDCONV_LINE_FAIL(line, msg)                                                      \
+	r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
+	return "";
 
 	Vector<String> lines = p_code.split("\n");
 #ifdef MODULE_REGEX_ENABLED
@@ -2823,6 +2825,7 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	int shader_decl_end = 0;
 	RenderingServer::ShaderMode shader_mode;
 
+	// TK_SHADER_TYPE, TK_IDENTIFIER, TK_SEMICOLON are always the first three tokens in a 3.x shader file
 	SDCONV_COND_FAIL(new_code_tokens.size() < 3, "Invalid shader file");
 	SDCONV_COND_LINE_FAIL(new_code_tokens[0].type != ShaderLanguage::TK_SHADER_TYPE, new_code_tokens[0].line, "Shader type must be first token");
 	SDCONV_COND_LINE_FAIL(new_code_tokens[1].type != ShaderLanguage::TK_IDENTIFIER, new_code_tokens[1].line, "Invalid shader type");
@@ -2837,8 +2840,7 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	} else if (shader_type == "canvas_item") {
 		shader_mode = RenderingServer::ShaderMode::SHADER_CANVAS_ITEM;
 	} else { // 3.x didn't support any other shader types
-		r_err_str = "Shader conversion failed: Invalid 3.x shader type " + shader_type;
-		return "";
+		SDCONV_LINE_FAIL(new_code_tokens[1].line, "Invalid 3.x shader type");
 	}
 	bool has_screen_texture, has_depth_texture, has_roughness_texture = false;
 	static const char *uniform_format = "\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
@@ -2879,9 +2881,9 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 						}
 					}
 					render_mode_end = tk.pos + 1; // include the semicolon
-					// remove the render_mode delcaration; it will be added back after we finish parsing the tokens
+					// Remove the render_mode declaration; it will be added back after we finish parsing the tokens.
 					new_code = new_code.substr(0, offset + render_mode_start) + new_code.substr(offset + render_mode_end);
-					// modify the offset
+					// Modify the offset.
 					offset -= (render_mode_end - render_mode_start);
 				}
 			} break;
@@ -2912,14 +2914,14 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 						new_code = new_code.substr(0, offset + vertex_start) + "process" + new_code.substr(offset + vertex_end);
 						offset += 1;
 					}
-
+				} else if (shader_mode == RenderingServer::ShaderMode::SHADER_CANVAS_ITEM && tk.text == "MODULATE") {
+					// This is not supported in Godot 4.x (yet, may be re-added).
+					SDCONV_LINE_FAIL(tk.line, "MODULATE is not supported by this version of Godot")
 				} else if (tk.text == "CLEARCOAT_GLOSS") {
 					int gloss_start = tk.pos;
 					SDCONV_COND_LINE_FAIL(i + 1 >= new_code_tokens.size(), tk.line, "unexpected end of file");
 					const ShaderLanguage::Token &prev_tk = new_code_tokens[i - 1];
 					const ShaderLanguage::Token &next_tk = new_code_tokens[i + 1];
-					int assign_clusure_start = 0;
-					int assign_closure_end = 0;
 					int assign_closure_end_idx = 0;
 					ShaderLanguage::Token end_token;
 					String assign_str = "CLEARCOAT_ROUGHNESS";
@@ -2950,11 +2952,8 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 											break;
 										} // otherwise, fall-through
 									case ShaderLanguage::TK_SEMICOLON: {
-										assign_closure_end = new_code_tokens[j].pos;
 										assign_closure_end_idx = j;
-										if (next_tk.type == ShaderLanguage::TK_OP_ASSIGN) {
-											insert_func(pending_closures, assign_closure_end_idx, "))");
-										}
+										insert_func(pending_closures, assign_closure_end_idx, "))");
 									} break;
 									default:
 										break;
@@ -2974,16 +2973,16 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 							assign_str += " = (1.0 - (";
 						} break;
 						case ShaderLanguage::TK_OP_ASSIGN_ADD:
-							assign_str += " -=";
+							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) +";
 							break;
 						case ShaderLanguage::TK_OP_ASSIGN_SUB:
-							assign_str += " +=";
+							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) -";
 							break;
 						case ShaderLanguage::TK_OP_ASSIGN_MUL: {
-							assign_str += " /=";
+							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) *";
 						} break;
 						case ShaderLanguage::TK_OP_ASSIGN_DIV: {
-							assign_str += " *=";
+							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) /";
 						} break;
 						default:
 							break;
@@ -3042,6 +3041,7 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	}
 #undef SDCONV_COND_FAIL
 #undef SDCONV_COND_LINE_FAIL
+#undef SDCONV_LINE_FAIL
 	return new_code;
 }
 
