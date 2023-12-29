@@ -330,6 +330,7 @@ class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	void _fix_old_format_scene(Node *p_node);
 
 public:
+	static String convert_old_shader_code(const String &p_code, String &r_err_str);
 	virtual uint32_t get_import_flags() const override;
 	virtual void get_extensions(List<String> *r_extensions) const override;
 	virtual Node *import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err = nullptr) override;

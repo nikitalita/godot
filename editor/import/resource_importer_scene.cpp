@@ -2741,27 +2741,38 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 
 ///////////////////////////////////////
 
-Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
-	// Shader conversion
-	// 3.x shaders will fail to compile with the 4.x compiler
-	// This is done upon `set_code()` during resource load, and this will result in errors when loading normally
-	Ref<Shader> shader;
-	shader.instantiate();
-	// get the props
-	List<PropertyInfo> properties;
-	p_res->get_property_list(&properties);
-	String code;
-	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
-		if (E->get().name == "code") {
-			code = p_res->get(E->get().name);
-		} else {
-			shader->set(E->get().name, p_res->get(E->get().name));
-		}
+String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_code, String &r_err_str) {
+	/**
+	 * We need to do the following:
+	 *  * Replace everything in RenamesMap3To4::shaders_renames
+	 *	* the usage of SCREEN_TEXTURE, DEPTH_TEXTURE, and NORMAL_ROUGHNESS_TEXTURE necessitates adding a uniform declaration at the top of the file
+	 *	* async_visible and async_hidden render modes need to be removed
+	 *	* If shader_type is "particles", need to rename the function "void vertex()" to "void process()"
+	 *	* If shader_type is "particles", need to rename the function "void fragment()" to "void process_fragment()"
+	 *  * Invert all usages of CLEARCOAT_GLOSS
+	 *    * invert all lefthand assignments; change += to -= and *= to /=, or if `=`, wrap in `(1.0 - (*))`
+	 * 			- `CLEARCOAT_GLOSS = 5.0 / foo;`
+	 * 			becomes: `CLEARCOAT_ROUGHNESS = (1.0 - (5.0 / foo));`,
+	 *          - `CLEARCOAT_GLOSS *= 1.1;`
+	 * 			becomes `CLEARCOAT_ROUGHNESS /= 1.1;`
+	 *    * invert all righthand usages
+	 * 			- `foo = CLEARCOAT_GLOSS;`
+	 * 			becomes: `foo = (1.0 - CLEARCOAT_ROUGHNESS);`
+	 *	* specular_blinn and specular_phong render modes throw an error
+	 *	* use of `MODULATE` throws an error
+	 */
+#define SDCONV_COND_FAIL(cond, msg)                             \
+	if (cond) {                                                 \
+		r_err_str = "Shader conversion failed: " + String(msg); \
+		return "";                                              \
 	}
-	// split into lines
-	Vector<String> lines = code.split("\n");
+#define SDCONV_COND_LINE_FAIL(cond, line, msg)                                           \
+	if (cond) {                                                                          \
+		r_err_str = "Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
+		return "";                                                                       \
+	}
 
-	// convert the code
+	Vector<String> lines = p_code.split("\n");
 #ifdef MODULE_REGEX_ENABLED
 	LocalVector<RegEx *> shaders_regexes;
 	for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
@@ -2783,68 +2794,280 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
 			int index = line.find(RenamesMap3To4::shaders_renames[current_index][0]);
 			if (index != -1) {
-				int end = index + strnlen(RenamesMap3To4::shaders_renames[current_index][0], 40);
-				// check if we are at a word boundary; check before and after word
+				int end = index + strlen(RenamesMap3To4::shaders_renames[current_index][0]);
+				// check if we are at a word boundary; if not, don't replace
 				if ((index == 0 || !is_ascii_identifier_char(line[index - 1])) &&
 						(end == line.length() || !is_ascii_identifier_char(line[end]))) {
 					line = line.replace_first(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
-					// we need to keep checking until we have replaced all instances of the word
-					// decrement current_index so we check this line for this replacement again
+					// keep checking until we don't find any more
 					current_index--;
 				}
 			}
 		}
-
 		lines.write[i] = line;
 	}
 #endif
 
-	// now we have to replace CLEARCOAT_GLOSS with CLEARCOAT_ROUGHNESS
-	// The functionality changed 4.x; CLEARCOAT_GLOSS increasing values mean glossier, but CLEARCOAT_ROUGHNESS increasing values mean less glossy
-	// The value needs to be inverted
-	/**
-	 * examples that we need to handle:
-	 * ```
-	 * CLEARCOAT_GLOSS = 0.5;                    // translate to CLEARCOAT_ROUGHNESS = (1.0 - 0.5);
-	 * CLEARCOAT_GLOSS /= 5.0;                   // translate to CLEARCOAT_ROUGHNESS *= 5.0;
-	 * CLEARCOAT_GLOSS *= 5.0;                   // translate to CLEARCOAT_ROUGHNESS /= 5.0;
-	 * CLEARCOAT_GLOSS += 0.5;                   // translate to CLEARCOAT_ROUGHNESS -= 0.5;
-	 * CLEARCOAT_GLOSS -= 0.5;                   // translate to CLEARCOAT_ROUGHNESS += 0.5;
-	 * float foo = CLEARCOAT_GLOSS;              // translate to float foo = (1.0 - CLEARCOAT_ROUGHNESS);
-	 * float bar = foo + CLEARCOAT_GLOSS;        // translate to float bar = foo + (1.0 - CLEARCOAT_ROUGHNESS);
-	 * float baz = foo + CLEARCOAT_GLOSS *= 5.0; // translate to float baz = foo + (1.0 - (CLEARCOAT_ROUGHNESS /= 5.0));
-	 * float bass = foo + CLEARCOAT_GLOSS / 5.0; // translate to float baz = foo + (1.0 - CLEARCOAT_ROUGHNESS) / 5.0;
-	 * float qux = foo + CLEARCOAT_GLOSS /= 5.0; // translate to float qux = foo + (1.0 - (CLEARCOAT_ROUGHNESS *= 5.0));
-	 * ```
-	 *
-	 * Another hard example:
-	 *
-	 * ```
-	 * float barf = foo /= bar - 2.0 + CLEARCOAT_GLOSS // unnecessary comment before line end with unnecessary semicolons ;;;;
-	 *                        *= baz / 2.0 * bar /= foo;
-	 * ```
-	 * Translates to:
-	 * ```
-	 * float barf = foo *= bar - 2.0 + (1.0 - (CLEARCOAT_ROUGHNESS // unnecessary comment before line end with unnecessary semicolons ;;;;
-	 * 					  /= baz / 2.0 * bar /= foo));
-	 * ```
-	 */
-
 	String new_code;
-	for (int i = 0; i < lines.size(); i++) {
-		if (lines[i].contains("CLEARCOAT_GLOSS")) {
-			// TODO: for right now, a very simple way to handle all of this; we really should be doing all of the above
-			// but this is a quick and dirty way to get it working
-			lines.insert(i + 1, "CLEARCOAT_ROUGHNESS = (1.0 - CLEARCOAT_GLOSS);");
-			lines.insert(i, "float CLEARCOAT_GLOSS = (1.0 - CLEARCOAT_ROUGHNESS);");
-			i += 2;
-		}
-	}
 	// join the lines back together
 	for (String line : lines) {
 		new_code += line + "\n";
 	}
+	ShaderLanguage sl;
+	Vector<ShaderLanguage::Token> new_code_tokens;
+	sl.token_debug_stream(new_code, new_code_tokens);
 
+	String shader_type;
+	Vector<String> render_modes;
+	int offset = 0;
+	int shader_decl_end = 0;
+	RenderingServer::ShaderMode shader_mode;
+
+	SDCONV_COND_FAIL(new_code_tokens.size() < 3, "Invalid shader file");
+	SDCONV_COND_LINE_FAIL(new_code_tokens[0].type != ShaderLanguage::TK_SHADER_TYPE, new_code_tokens[0].line, "Shader type must be first token");
+	SDCONV_COND_LINE_FAIL(new_code_tokens[1].type != ShaderLanguage::TK_IDENTIFIER, new_code_tokens[1].line, "Invalid shader type");
+	shader_type = new_code_tokens[1].text;
+	SDCONV_COND_LINE_FAIL(new_code_tokens[2].type != ShaderLanguage::TK_SEMICOLON, new_code_tokens[2].line, "Expected semi-colon after shader type");
+
+	shader_decl_end = new_code_tokens[2].pos + 1;
+	if (shader_type == "spatial") {
+		shader_mode = RenderingServer::ShaderMode::SHADER_SPATIAL;
+	} else if (shader_type == "particles") {
+		shader_mode = RenderingServer::ShaderMode::SHADER_PARTICLES;
+	} else if (shader_type == "canvas_item") {
+		shader_mode = RenderingServer::ShaderMode::SHADER_CANVAS_ITEM;
+	} else { // 3.x didn't support any other shader types
+		r_err_str = "Shader conversion failed: Invalid 3.x shader type " + shader_type;
+		return "";
+	}
+	bool has_screen_texture, has_depth_texture, has_roughness_texture = false;
+	static const char *uniform_format = "\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
+	HashMap<int, String> pending_closures;
+	static auto insert_func = [](HashMap<int, String> &pending_closures, int tk_idx, const String &closure_string) {
+		if (pending_closures.has(tk_idx)) {
+			pending_closures[tk_idx] += closure_string;
+		} else {
+			pending_closures.insert(tk_idx, closure_string);
+		}
+	};
+	for (int i = 3; i < new_code_tokens.size(); i++) {
+		ShaderLanguage::Token &tk = new_code_tokens.write[i];
+		if (pending_closures.has(i)) {
+			// insert the closure string
+			String new_code_start = new_code.substr(0, offset + tk.pos);
+			String debugtthings = new_code_start.substr(new_code_start.size() - 300);
+			// insert closure right before the token
+			new_code = new_code.substr(0, offset + tk.pos - 1) + pending_closures[i] + new_code.substr(offset + tk.pos - 1);
+			offset += pending_closures[i].size();
+			pending_closures.erase(i);
+		}
+		switch (tk.type) {
+			case ShaderLanguage::TK_RENDER_MODE: {
+				// we only care about the ones for spatial
+				if (shader_mode == RenderingServer::ShaderMode::SHADER_SPATIAL) {
+					int render_mode_start = -1;
+					int render_mode_end = -1;
+					render_mode_start = tk.pos;
+					while (tk.type != ShaderLanguage::TK_SEMICOLON) {
+						SDCONV_COND_LINE_FAIL(++i >= new_code_tokens.size(), tk.line, "Invalid render mode declaration");
+						tk = new_code_tokens[i];
+						if (tk.type == ShaderLanguage::TK_IDENTIFIER) {
+							SDCONV_COND_LINE_FAIL(tk.text == "specular_blinn" || tk.text == "specular_phong", tk.line, "render mode" + tk.text + "is not supported by this version of Godot.");
+							render_modes.push_back(tk.text);
+						} else {
+							SDCONV_COND_LINE_FAIL(tk.type != ShaderLanguage::TK_COMMA && tk.type != ShaderLanguage::TK_SEMICOLON, tk.line, "Invalid render mode declaration");
+						}
+					}
+					render_mode_end = tk.pos + 1; // include the semicolon
+					// remove the render_mode delcaration; it will be added back after we finish parsing the tokens
+					new_code = new_code.substr(0, offset + render_mode_start) + new_code.substr(offset + render_mode_end);
+					// modify the offset
+					offset -= (render_mode_end - render_mode_start);
+				}
+			} break;
+			case ShaderLanguage::TK_IDENTIFIER: {
+				if (tk.text == "SCREEN_TEXTURE" && !has_screen_texture) {
+					// format the string
+					has_screen_texture = true;
+					String uniform = vformat(uniform_format, "SCREEN_TEXTURE", "screen_texture");
+					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
+					offset += uniform.size();
+				} else if (tk.text == "DEPTH_TEXTURE" && !has_depth_texture) {
+					has_depth_texture = true;
+					String uniform = vformat(uniform_format, "DEPTH_TEXTURE", "depth_texture");
+					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
+					offset += uniform.size();
+				} else if (tk.text == "NORMAL_ROUGHNESS_TEXTURE" && !has_roughness_texture) {
+					has_roughness_texture = true;
+					String uniform = vformat(uniform_format, "NORMAL_ROUGHNESS_TEXTURE", "normal_roughness_texture");
+					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
+					offset += uniform.size();
+				} else if (shader_mode == RenderingServer::ShaderMode::SHADER_PARTICLES && tk.text == "vertex") {
+					// this may be the vertex function
+					SDCONV_COND_LINE_FAIL(i + 1 >= new_code_tokens.size(), tk.line, "unexpected end of file");
+					if (new_code_tokens[i - 1].type == ShaderLanguage::TK_TYPE_VOID || new_code_tokens[i + 1].type == ShaderLanguage::TK_PARENTHESIS_OPEN) {
+						// rename it to process
+						int vertex_start = tk.pos;
+						int vertex_end = vertex_start + 6;
+						new_code = new_code.substr(0, offset + vertex_start) + "process" + new_code.substr(offset + vertex_end);
+						offset += 1;
+					}
+
+				} else if (tk.text == "CLEARCOAT_GLOSS") {
+					int gloss_start = tk.pos;
+					SDCONV_COND_LINE_FAIL(i + 1 >= new_code_tokens.size(), tk.line, "unexpected end of file");
+					const ShaderLanguage::Token &prev_tk = new_code_tokens[i - 1];
+					const ShaderLanguage::Token &next_tk = new_code_tokens[i + 1];
+					int assign_clusure_start = 0;
+					int assign_closure_end = 0;
+					int assign_closure_end_idx = 0;
+					ShaderLanguage::Token end_token;
+					String assign_str = "CLEARCOAT_ROUGHNESS";
+					int assign_end = 0;
+					bool is_assign = false;
+					switch (next_tk.type) {
+						case ShaderLanguage::TK_OP_ASSIGN:
+						case ShaderLanguage::TK_OP_ASSIGN_ADD:
+						case ShaderLanguage::TK_OP_ASSIGN_SUB:
+						case ShaderLanguage::TK_OP_ASSIGN_MUL:
+						case ShaderLanguage::TK_OP_ASSIGN_DIV: {
+							// need to find the end of this assignment closure
+							is_assign = true;
+							SDCONV_COND_LINE_FAIL(i + 2 >= new_code_tokens.size(), next_tk.line, "unexpected end of file");
+							assign_end = next_tk.pos + (next_tk.type == ShaderLanguage::TK_OP_ASSIGN ? 1 : 2);
+
+							int additional_closures = 0;
+							for (int j = i + 2; j < new_code_tokens.size(); j++) {
+								switch (new_code_tokens[j].type) {
+									case ShaderLanguage::TK_PARENTHESIS_OPEN:
+									case ShaderLanguage::TK_BRACKET_OPEN:
+										additional_closures++;
+										break;
+									case ShaderLanguage::TK_PARENTHESIS_CLOSE:
+									case ShaderLanguage::TK_BRACKET_CLOSE:
+										if (additional_closures != 0) {
+											additional_closures--;
+											break;
+										} // otherwise, fall-through
+									case ShaderLanguage::TK_SEMICOLON: {
+										assign_closure_end = new_code_tokens[j].pos;
+										assign_closure_end_idx = j;
+										if (next_tk.type == ShaderLanguage::TK_OP_ASSIGN) {
+											insert_func(pending_closures, assign_closure_end_idx, "))");
+										}
+									} break;
+									default:
+										break;
+								}
+								if (assign_closure_end_idx) {
+									break;
+								}
+							}
+						} break;
+						default:
+							assign_closure_end_idx = i + 1;
+							assign_end = tk.pos + 15; // length of "CLEARCOAT_GLOSS"
+							break;
+					}
+					switch (next_tk.type) {
+						case ShaderLanguage::TK_OP_ASSIGN: {
+							assign_str += " = (1.0 - (";
+						} break;
+						case ShaderLanguage::TK_OP_ASSIGN_ADD:
+							assign_str += " -=";
+							break;
+						case ShaderLanguage::TK_OP_ASSIGN_SUB:
+							assign_str += " +=";
+							break;
+						case ShaderLanguage::TK_OP_ASSIGN_MUL: {
+							assign_str += " /=";
+						} break;
+						case ShaderLanguage::TK_OP_ASSIGN_DIV: {
+							assign_str += " *=";
+						} break;
+						default:
+							break;
+					}
+					// now we need to check the previous token
+					// if this is anything but a `{` or `;`, we need to invert it
+					switch (prev_tk.type) {
+						case ShaderLanguage::TK_CURLY_BRACKET_OPEN:
+						case ShaderLanguage::TK_SEMICOLON: {
+							// no need to wrap it in a closure, just replace it
+							new_code = new_code.substr(0, offset + gloss_start) + assign_str + new_code.substr(offset + assign_end);
+							offset += assign_str.size() - (assign_end - gloss_start);
+						} break;
+						default: {
+							// invert it
+							String invert_str; // need a closure around the assign statement
+							if (is_assign) {
+								invert_str = "(1.0 - (" + assign_str;
+								insert_func(pending_closures, assign_closure_end_idx, "))");
+							} else {
+								invert_str = "(1.0 - " + assign_str + ")";
+							}
+							new_code = new_code.substr(0, offset + gloss_start) + invert_str + new_code.substr(offset + assign_end);
+							offset += invert_str.size() - (assign_end - gloss_start);
+						} break;
+					}
+					// skip over the assignment token if there is one
+					if (is_assign) {
+						i++;
+					}
+				}
+			} break; // ShaderLanguage::TK_IDENTIFIER
+			default:
+				break;
+		}
+	}
+	if (!render_modes.is_empty()) {
+		if (shader_mode == RenderingServer::ShaderMode::SHADER_SPATIAL) {
+			if (render_modes.has("async_visible")) {
+				render_modes.remove_at(render_modes.find("async_visible"));
+			}
+			if (render_modes.has("async_hidden")) {
+				render_modes.remove_at(render_modes.find("async_hidden"));
+			}
+			// join all the render modes together and create a new render mode string
+			String render_mode_line = "\nrender_mode ";
+			for (int i = 0; i < render_modes.size(); i++) {
+				render_mode_line += render_modes[i];
+				if (i != render_modes.size() - 1) {
+					render_mode_line += ", ";
+				}
+			}
+			render_mode_line += ";\n";
+			new_code = new_code.substr(0, shader_decl_end) + render_mode_line + new_code.substr(shader_decl_end);
+		}
+	}
+#undef SDCONV_COND_FAIL
+#undef SDCONV_COND_LINE_FAIL
+	return new_code;
+}
+
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Shader conversion
+	// 3.x shaders will fail to compile with the 4.x compiler
+	// This is done upon `set_code()` during resource load, and this will result in errors when loading normally
+	Ref<Shader> shader;
+	shader.instantiate();
+	// get the props
+	List<PropertyInfo> properties;
+	p_res->get_property_list(&properties);
+	String code;
+	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
+		if (E->get().name == "code") {
+			code = p_res->get(E->get().name);
+		} else {
+			shader->set(E->get().name, p_res->get(E->get().name));
+		}
+	}
+	String new_code = convert_old_shader_code(code, r_err_str);
+	if (r_err_str != "") {
+		r_err = ERR_FILE_CORRUPT;
+		return Ref<Resource>();
+	}
+	// sl.token_debug_stream(new_code, new_code_tokens);
 	shader->set_code(new_code);
 	r_err = OK;
 	return shader;
