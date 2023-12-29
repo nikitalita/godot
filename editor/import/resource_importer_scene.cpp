@@ -3045,21 +3045,49 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	return new_code;
 }
 
+int _get_starting_index(const List<PropertyInfo> &p_properties) {
+	// we need to get past MissingResource's properties
+	bool fmissingResource = false;
+	bool foundoriginal_class = false;
+	bool found_recording_property = false;
+	for (int i = 0; i < p_properties.size(); i++) {
+		if (p_properties[i].usage & PROPERTY_USAGE_CATEGORY && p_properties[i].name == "MissingResource") {
+			fmissingResource = true;
+		} else if (fmissingResource) {
+			if (p_properties[i].name == "original_class") {
+				foundoriginal_class = true;
+			}
+			if (p_properties[i].name == "recording_properties") {
+				found_recording_property = true;
+			}
+		}
+		if (foundoriginal_class && found_recording_property) {
+			return i + 1;
+		}
+	}
+	return 0;
+}
+
 Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
 	// Shader conversion
 	// 3.x shaders will fail to compile with the 4.x compiler
 	// This is done upon `set_code()` during resource load, and this will result in errors when loading normally
 	Ref<Shader> shader;
+	String code;
+	List<PropertyInfo> missingres_properties;
 	shader.instantiate();
 	// get the props
-	List<PropertyInfo> properties;
-	p_res->get_property_list(&properties);
-	String code;
-	for (List<PropertyInfo>::Element *E = properties.front(); E; E = E->next()) {
-		if (E->get().name == "code") {
-			code = p_res->get(E->get().name);
+	p_res->get_property_list(&missingres_properties);
+	int start_idx = _get_starting_index(missingres_properties);
+	// set resource_local_to_scene and resource_name; resource_path gets set by the resource loader
+	shader->set("resource_local_to_scene", p_res->get("resource_local_to_scene"));
+	shader->set("resource_name", p_res->get("resource_name"));
+	for (int i = start_idx; i < missingres_properties.size(); i++) {
+		const PropertyInfo &prop = missingres_properties[i];
+		if (prop.name == "code") {
+			code = p_res->get(prop.name);
 		} else {
-			shader->set(E->get().name, p_res->get(E->get().name));
+			shader->set(prop.name, p_res->get(prop.name));
 		}
 	}
 	String new_code = convert_old_shader_code(code, r_err_str);
@@ -3077,12 +3105,22 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<Mis
 	// Converts old scene animation format
 	// `transform` track type was removed in 4.x and will result in loading errors if loaded normally
 	// We need to convert any `transform` tracks to separate position, rotation, and scale tracks
-	List<PropertyInfo> properties;
+	List<PropertyInfo> missingres_properties;
 	Vector<Dictionary> tracks;
 	Ref<Animation> animation;
+
 	animation.instantiate();
-	p_res->get_property_list(&properties);
-	for (const PropertyInfo &prop : properties) {
+	p_res->get_property_list(&missingres_properties);
+	// ClassDB::get_property_list("Animation", &animation_properties); // Animation is derived from `Resource`, so no inheritance
+
+	int start_idx = _get_starting_index(missingres_properties);
+	// Set resource properties
+	// Set resource_local_to_scene and resource_name; resource_path gets set by the resource loader because it pollutes the cache.
+	animation->set("resource_local_to_scene", p_res->get("resource_local_to_scene"));
+	animation->set("resource_name", p_res->get("resource_name"));
+	// Set recorded properties.
+	for (int i = start_idx; i < missingres_properties.size(); i++) {
+		const PropertyInfo &prop = missingres_properties[i];
 		if (prop.name.begins_with("tracks/")) {
 			int id = prop.name.get_slicec('/', 1).to_int();
 			while (id >= tracks.size()) {
