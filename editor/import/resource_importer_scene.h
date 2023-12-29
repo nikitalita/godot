@@ -312,9 +312,21 @@ public:
 
 class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterESCN, EditorSceneFormatImporter);
-
+	enum AnimationImportTracks {
+		ANIMATION_IMPORT_TRACKS_IF_PRESENT,
+		ANIMATION_IMPORT_TRACKS_IF_PRESENT_FOR_ALL,
+		ANIMATION_IMPORT_TRACKS_NEVER,
+	};
+	enum TrackChannel {
+		TRACK_CHANNEL_POSITION,
+		TRACK_CHANNEL_ROTATION,
+		TRACK_CHANNEL_SCALE,
+		TRACK_CHANNEL_BLEND_SHAPE,
+		TRACK_CHANNEL_MAX
+	};
 	static Ref<Resource> convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 	static Ref<Resource> convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
+	void _recompute_animation_tracks(AnimationPlayer *p_player);
 
 public:
 	virtual uint32_t get_import_flags() const override;

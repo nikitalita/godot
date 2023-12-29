@@ -2977,6 +2977,70 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<Mis
 	return animation;
 }
 
+void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer *p_player) {
+	List<StringName> anims;
+	p_player->get_animation_list(&anims);
+	Node *parent = p_player->get_parent();
+	ERR_FAIL_NULL(parent);
+	bool tracks_to_add = false;
+
+	// we iterate over all the animations in the player, then all the tracks in the player
+	// if it is position, rotation, or scale, we get the skeleton path and the bone name
+	// then we get the node at the skeleton path, and get the bone index from the bone name
+	// we then get the rest position, rotation, or scale from the skeleton
+	// then we iterate over all the keys in the track, and multiply the key * rest position, rotation, or scale and assign it to the key
+
+	p_player->get_animation_list(&anims);
+
+	for (List<StringName>::Element *E = anims.front(); E; E = E->next()) {
+		StringName anim_name = E->get();
+		Ref<Animation> anim = p_player->get_animation(anim_name);
+		ERR_CONTINUE(anim.is_null());
+		for (int i = 0; i < anim->get_track_count(); i++) {
+			int track_type = anim->track_get_type(i);
+			if (track_type == Animation::TYPE_POSITION_3D || track_type == Animation::TYPE_ROTATION_3D || track_type == Animation::TYPE_SCALE_3D) {
+				NodePath path = anim->track_get_path(i);
+				Node *node = parent->get_node(path);
+				if (!node) {
+					continue;
+				}
+				Skeleton3D *skel = Object::cast_to<Skeleton3D>(node);
+				ERR_CONTINUE(!skel);
+				StringName bone = path.get_subname(0);
+				int bone_idx = skel->find_bone(bone);
+				if (bone_idx == -1) {
+					continue;
+				}
+				// Note that this is using get_bone_pose to update the bone pose cache.
+				_ALLOW_DISCARD_ skel->get_bone_pose(bone_idx);
+				Vector3 loc = skel->get_bone_pose_position(bone_idx);
+				Quaternion rot = skel->get_bone_pose_rotation(bone_idx);
+				Vector3 scale = skel->get_bone_pose_scale(bone_idx);
+
+				Transform3D rest = skel->get_bone_rest(bone_idx);
+				for (int j = 0; j < anim->track_get_key_count(i); j++) {
+					float time = anim->track_get_key_time(i, j);
+					float transition = anim->track_get_key_transition(i, j);
+					Variant val;
+					if (track_type == Animation::TYPE_POSITION_3D) {
+						Vector3 v = anim->track_get_key_value(i, j);
+						anim->track_set_key_value(i, j, rest.translated(v).origin);
+					} else if (track_type == Animation::TYPE_ROTATION_3D) {
+						Quaternion q = anim->track_get_key_value(i, j);
+						auto new_q = rest.basis.rotated(q).get_rotation_quaternion();
+						anim->track_set_key_value(i, j, new_q);
+					} else if (track_type == Animation::TYPE_SCALE_3D) {
+						Vector3 v = anim->track_get_key_value(i, j);
+						Vector3 new_v = rest.scaled(v).basis.get_scale();
+						anim->track_set_key_value(i, j, new_v);
+					}
+				}
+				tracks_to_add = true;
+			}
+		}
+	}
+}
+
 uint32_t EditorSceneFormatImporterESCN::get_import_flags() const {
 	return IMPORT_SCENE;
 }
@@ -2993,10 +3057,12 @@ int get_text_format_version(String p_path) {
 	// skip empty lines and comments
 	while (line.is_empty() || line.begins_with(";")) {
 		line = f->get_line().strip_edges();
+		if (f->eof_reached())
+			break;
 	}
-	int format_index = line.find("format=");
+	int format_index = line.find("format");
 	ERR_FAIL_COND_V_MSG(format_index == -1, -1, "No format specifier in file '" + p_path + "'.");
-	String format_str = line.substr(format_index + 7, line.length()).strip_edges();
+	String format_str = line.substr(format_index).get_slicec('=', 1).strip_edges();
 	ERR_FAIL_COND_V_MSG(!format_str.substr(0, 1).is_numeric(), -1, "Invalid format in file '" + p_path + "'.");
 	int format = format_str.to_int();
 	return format;
@@ -3028,6 +3094,14 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 	Node *scene = ps->instantiate();
 	ERR_FAIL_COND_V(!scene, nullptr);
 
+	if (format == 2) {
+		TypedArray<Node> nodes = scene->find_children("*", "AnimationPlayer");
+		for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
+			AnimationPlayer *player = cast_to<AnimationPlayer>(nodes[node_i]);
+			_recompute_animation_tracks(player);
+		}
+	}
+
 	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
 	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
 		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
@@ -3049,8 +3123,32 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 			} // otherwise parent isn't a Node3D
 		}
 		importer_mesh_3d->set_transform(rel_transform);
-		importer_mesh_3d->set_skin(mesh_3d->get_skin());
+		Ref<Skin> skin = mesh_3d->get_skin();
+		// if (format == 2 && skin.is_null()) {
+		// 	auto skel_path = mesh_3d->get_skeleton_path();
+		// 	if (skel_path != NodePath()) {
+		// 		Node *skel_node = skel_path.is_absolute() ? scene->get_node(skel_path) : mesh_3d->get_node(skel_path);
+		// 		if (skel_node) {
+		// 			Skeleton3D *skel = Object::cast_to<Skeleton3D>(skel_node);
+		// 			if (skel) {
+		// 				auto new_skin = skel->create_skin_from_rest_transforms();
+		// 				if (new_skin.is_valid()) {
+		// 					for (int32_t bone_i = 0; bone_i < skel->get_bone_count(); bone_i++) {
+		// 						new_skin->set_bind_name(bone_i, skel->get_bone_name(bone_i));
+		// 					}
+		// 					auto skin_ref = skel->register_skin(new_skin);
+		// 					if (skin_ref.is_valid()) {
+		// 						skin = skin_ref->get_skin();
+		// 						mesh_3d->set_skin(skin);
+		// 						skin = mesh_3d->get_skin();
+		// 					}
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
 		importer_mesh_3d->set_skeleton_path(mesh_3d->get_skeleton_path());
+		importer_mesh_3d->set_skin(skin);
 		Ref<ArrayMesh> array_mesh_3d_mesh = mesh_3d->get_mesh();
 		if (array_mesh_3d_mesh.is_valid()) {
 			// For the MeshInstance3D nodes, we need to convert the ArrayMesh to an ImporterMesh specially.
