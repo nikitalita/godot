@@ -2734,6 +2734,142 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 }
 
 ///////////////////////////////////////
+Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Converts old scene animation format to new one.
+	// get all the properties from the missing resource
+	List<PropertyInfo> properties;
+
+	Vector<Dictionary> tracks;
+	Ref<Animation> animation;
+	animation.instantiate();
+	p_res->get_property_list(&properties);
+	for (const PropertyInfo &prop : properties) {
+		if (prop.name.begins_with("tracks/")) {
+			int id = prop.name.get_slicec('/', 1).to_int();
+			while (id >= tracks.size()) {
+				tracks.push_back(Dictionary());
+			}
+			tracks.write[id][prop.name.get_slicec('/', 2)] = p_res->get(prop.name);
+		} else {
+			animation->set(prop.name, p_res->get(prop.name));
+		}
+	}
+	for (int i = 0; i < tracks.size(); i++) {
+		// now that we have all the tracks, we need to split the transform tracks into separate tracks
+		// this is because the current animation player doesn't support transform tracks
+		// so we need to split them into separate position, rotation, and scale tracks
+		// TODO: we also need to split the blend shape tracks into separate tracks
+		if (tracks[i].has("type") && tracks[i]["type"] == "transform") {
+			// split the transform track into separate tracks
+
+			// Old scene format only used 32-bit floats, did not have configurable real_t.
+			Vector<float> keys = tracks[i]["keys"];
+			int vcount = keys.size();
+			int tcount = vcount / 12;
+			if ((vcount % 12) != 0) { // should be multiple of 12
+				r_err_str = "Failed to convert animation: invalid number of keys in transform track.";
+				r_err = ERR_FILE_CORRUPT;
+				ERR_FAIL_V(Ref<Resource>());
+			}
+
+			Vector<real_t> position_keys;
+			Vector<real_t> rotation_keys;
+			Vector<real_t> scale_keys;
+			position_keys.resize(tcount * 5); // time + transition + xyz
+			rotation_keys.resize(tcount * 6); // time + transition + xyzw
+			scale_keys.resize(tcount * 5); // time + transition + xyz
+			// split the keys into separate tracks
+			for (int j = 0; j < tcount; j++) {
+				// it's position (Vector3, xyz), then rotation (Quaternion, xyzw), then scale (Vector3, xyz)
+				// each track has time and transition values, so get those
+				const float *ofs = &(keys.ptr()[j * 12]);
+				float time = ofs[0];
+				float transition = ofs[1];
+
+				position_keys.write[j * 5 + 0] = time;
+				position_keys.write[j * 5 + 1] = transition;
+				position_keys.write[j * 5 + 2] = ofs[2]; // x
+				position_keys.write[j * 5 + 3] = ofs[3]; // y
+				position_keys.write[j * 5 + 4] = ofs[4]; // z
+
+				rotation_keys.write[j * 6 + 0] = time;
+				rotation_keys.write[j * 6 + 1] = transition;
+				rotation_keys.write[j * 6 + 2] = ofs[5]; // x
+				rotation_keys.write[j * 6 + 3] = ofs[6]; // y
+				rotation_keys.write[j * 6 + 4] = ofs[7]; // z
+				rotation_keys.write[j * 6 + 5] = ofs[8]; // w
+
+				scale_keys.write[j * 5 + 0] = time;
+				scale_keys.write[j * 5 + 1] = transition;
+				scale_keys.write[j * 5 + 2] = ofs[9]; // x
+				scale_keys.write[j * 5 + 3] = ofs[10]; // y
+				scale_keys.write[j * 5 + 4] = ofs[11]; // z
+			}
+
+			Dictionary c_track;
+			{
+				auto dict_keys = tracks[i].keys();
+				for (int j = 0; j < dict_keys.size(); j++) {
+					if (dict_keys[j] == "type" || dict_keys[j] == "keys") {
+						continue;
+					}
+					c_track[dict_keys[j]] = tracks[i][dict_keys[j]];
+				}
+			}
+			auto c_track_keys = c_track.keys();
+			tracks.remove_at(i);
+			// scale, then rotation, then position
+			if (scale_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "scale_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = scale_keys;
+				tracks.insert(i, track);
+			}
+			if (rotation_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "rotation_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = rotation_keys;
+				tracks.insert(i, track);
+			}
+			if (position_keys.size() > 0) {
+				Dictionary track;
+				track["type"] = "position_3d";
+				for (int j = 0; j < c_track_keys.size(); j++) {
+					String key = c_track_keys[j];
+					track[key] = c_track[key];
+				}
+				track["keys"] = position_keys;
+				tracks.insert(i, track);
+			}
+		}
+	}
+	// now, set all the track data
+	for (int i = 0; i < tracks.size(); i++) {
+		const Dictionary &track = tracks[i];
+		String track_prefix = "tracks/" + itos(i) + "/";
+		animation->set(track_prefix + "type", track["type"]);
+		// iterate over all the dictionary keys
+		TypedArray<String> dict_keys = track.keys();
+		for (int j = 0; j < dict_keys.size(); j++) {
+			const String &key = dict_keys[j];
+			if (key != "type" && key != "keys") {
+				animation->set(track_prefix + key, track[key]);
+			}
+		}
+		// set keys at the end
+		animation->set(track_prefix + "keys", track["keys"]);
+	}
+	r_err = OK;
+	return animation;
+}
 
 uint32_t EditorSceneFormatImporterESCN::get_import_flags() const {
 	return IMPORT_SCENE;
@@ -2743,11 +2879,48 @@ void EditorSceneFormatImporterESCN::get_extensions(List<String> *r_extensions) c
 	r_extensions->push_back("escn");
 }
 
+int get_text_format_version(String p_path) {
+	Error error;
+	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &error);
+	ERR_FAIL_COND_V_MSG(error != OK || f.is_null(), -1, "Cannot open file '" + p_path + "'.");
+	String line = f->get_line().strip_edges();
+	// skip empty lines and comments
+	while (line.is_empty() || line.begins_with(";")) {
+		line = f->get_line().strip_edges();
+	}
+	int format_index = line.find("format=");
+	ERR_FAIL_COND_V_MSG(format_index == -1, -1, "No format specifier in file '" + p_path + "'.");
+	String format_str = line.substr(format_index + 7, line.length()).strip_edges();
+	ERR_FAIL_COND_V_MSG(!format_str.substr(0, 1).is_numeric(), -1, "Invalid format in file '" + p_path + "'.");
+	int format = format_str.to_int();
+	return format;
+}
+
 Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err) {
 	Error error;
-	Ref<PackedScene> ps = ResourceFormatLoaderText::singleton->load(p_path, p_path, &error);
+	Ref<PackedScene> ps;
+
+	int format = get_text_format_version(p_path);
+	ERR_FAIL_COND_V(format == -1, nullptr);
+	if (format == 2) { // 3.x escn export
+		Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &error);
+		ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot open file '" + p_path + "'.");
+		ResourceLoaderText loader;
+		String path = p_path;
+		loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
+		loader.res_path = loader.local_path;
+		loader._set_special_handler("Animation", convert_old_animation);
+		loader.open(f);
+		error = loader.load();
+		ERR_FAIL_COND_V_MSG(error != OK, nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
+		ps = loader.get_resource();
+	} else {
+		ps = ResourceFormatLoaderText::singleton->load(p_path, p_path, &error);
+	}
 	ERR_FAIL_COND_V_MSG(!ps.is_valid(), nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
 	Node *scene = ps->instantiate();
+	ERR_FAIL_COND_V(!scene, nullptr);
+
 	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
 	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
 		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
@@ -2756,7 +2929,19 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		// Ignore the aabb, it will be recomputed.
 		ImporterMeshInstance3D *importer_mesh_3d = memnew(ImporterMeshInstance3D);
 		importer_mesh_3d->set_name(mesh_3d->get_name());
-		importer_mesh_3d->set_transform(mesh_3d->get_relative_transform(mesh_3d->get_parent()));
+		Node *parent = mesh_3d->get_parent();
+		Transform3D rel_transform = mesh_3d->get_relative_transform(parent);
+		if (rel_transform == Transform3D() && parent && parent != mesh_3d) {
+			// If we're here, we probably got a "data.parent is null" error
+			// Node3D.data.parent hasn't been set yet but Node.data.parent has, so we need to get the transform manually
+			Node3D *parent_3d = mesh_3d->get_parent_node_3d();
+			if (parent == parent_3d) {
+				rel_transform = mesh_3d->get_transform();
+			} else if (parent_3d) {
+				rel_transform = parent_3d->get_relative_transform(parent) * mesh_3d->get_transform();
+			} // otherwise parent isn't a Node3D
+		}
+		importer_mesh_3d->set_transform(rel_transform);
 		importer_mesh_3d->set_skin(mesh_3d->get_skin());
 		importer_mesh_3d->set_skeleton_path(mesh_3d->get_skeleton_path());
 		Ref<ArrayMesh> array_mesh_3d_mesh = mesh_3d->get_mesh();
@@ -2798,8 +2983,6 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 			continue;
 		}
 	}
-
-	ERR_FAIL_NULL_V(scene, nullptr);
 
 	return scene;
 }
