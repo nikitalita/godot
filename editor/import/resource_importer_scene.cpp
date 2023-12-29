@@ -2742,6 +2742,9 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 ///////////////////////////////////////
 
 Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
+	// Shader conversion
+	// 3.x shaders will fail to compile with the 4.x compiler
+	// This is done upon `set_code()` during resource load, and this will result in errors when loading normally
 	Ref<Shader> shader;
 	shader.instantiate();
 	// get the props
@@ -2848,10 +2851,10 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 }
 
 Ref<Resource> EditorSceneFormatImporterESCN::convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str) {
-	// Converts old scene animation format to new one.
-	// get all the properties from the missing resource
+	// Converts old scene animation format
+	// `transform` track type was removed in 4.x and will result in loading errors if loaded normally
+	// We need to convert any `transform` tracks to separate position, rotation, and scale tracks
 	List<PropertyInfo> properties;
-
 	Vector<Dictionary> tracks;
 	Ref<Animation> animation;
 	animation.instantiate();
@@ -3010,6 +3013,7 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 				}
 				Skeleton3D *skel = Object::cast_to<Skeleton3D>(node);
 				ERR_CONTINUE(!skel);
+
 				StringName bone = path.get_subname(0);
 				int bone_idx = skel->find_bone(bone);
 				if (bone_idx == -1) {
@@ -3041,6 +3045,45 @@ void EditorSceneFormatImporterESCN::_recompute_animation_tracks(AnimationPlayer 
 				}
 			}
 		}
+	}
+}
+
+void EditorSceneFormatImporterESCN::_fix_old_format_scene(Node *scene) {
+	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
+	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
+		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
+		auto skel_path = mesh_3d->get_skeleton_path();
+		Node *skel_node = skel_path.is_absolute() ? scene->get_node(skel_path) : mesh_3d->get_node(skel_path);
+		if (skel_node) {
+			Skeleton3D *skel = Object::cast_to<Skeleton3D>(skel_node);
+			if (!skel) {
+				WARN_PRINT("MeshInstance3D.skeleton_path is not a Skeleton3D.");
+				continue;
+			}
+			// Checking to see if the `pose` parameter was not set in the imported skeleton bones
+			// 3.x did not export skeletons with the `pose` parameter set if `pose == Transform3D()`
+			// If it wasn't, we need to set it to the rest pose if `rest != Transform3D()`
+			// poses were relative to the rests in 3.x, but they're absolute in 4.x
+			for (int i = 0; i < skel->get_bone_count(); i++) {
+				Transform3D rest = skel->get_bone_rest(i);
+				Vector3 pos = skel->get_bone_pose_position(i);
+				Quaternion rot = skel->get_bone_pose_rotation(i);
+				Vector3 scale = skel->get_bone_pose_scale(i);
+				if (rest != Transform3D() && pos == Vector3() && rot == Quaternion() && scale == Vector3(1, 1, 1)) {
+					// we need to set the position, rotation, and scale to the rest position, rotation, and scale
+					skel->set_bone_pose_position(i, rest.origin);
+					skel->set_bone_pose_rotation(i, rest.basis.get_rotation_quaternion());
+					skel->set_bone_pose_scale(i, rest.basis.get_scale());
+				}
+			}
+		}
+	}
+	// 3.x animations keyframe transforms were similarly relative to the `rest` pose
+	// need to convert them to absolute
+	TypedArray<Node> skel_nodes = scene->find_children("*", "AnimationPlayer");
+	for (int32_t node_i = 0; node_i < skel_nodes.size(); node_i++) {
+		AnimationPlayer *player = cast_to<AnimationPlayer>(skel_nodes[node_i]);
+		_recompute_animation_tracks(player);
 	}
 }
 
@@ -3097,16 +3140,10 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 	ERR_FAIL_COND_V_MSG(!ps.is_valid(), nullptr, "Cannot load scene as text resource from path '" + p_path + "'.");
 	Node *scene = ps->instantiate();
 	ERR_FAIL_COND_V(!scene, nullptr);
-
-	if (format == 2) {
-		TypedArray<Node> nodes = scene->find_children("*", "AnimationPlayer");
-		for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
-			AnimationPlayer *player = cast_to<AnimationPlayer>(nodes[node_i]);
-			_recompute_animation_tracks(player);
-		}
-	}
-
 	TypedArray<Node> nodes = scene->find_children("*", "MeshInstance3D");
+	if (format == 2) {
+		_fix_old_format_scene(scene);
+	}
 	for (int32_t node_i = 0; node_i < nodes.size(); node_i++) {
 		MeshInstance3D *mesh_3d = cast_to<MeshInstance3D>(nodes[node_i]);
 		Ref<ImporterMesh> mesh;
@@ -3128,29 +3165,6 @@ Node *EditorSceneFormatImporterESCN::import_scene(const String &p_path, uint32_t
 		}
 		importer_mesh_3d->set_transform(rel_transform);
 		Ref<Skin> skin = mesh_3d->get_skin();
-		// if (format == 2 && skin.is_null()) {
-		// 	auto skel_path = mesh_3d->get_skeleton_path();
-		// 	if (skel_path != NodePath()) {
-		// 		Node *skel_node = skel_path.is_absolute() ? scene->get_node(skel_path) : mesh_3d->get_node(skel_path);
-		// 		if (skel_node) {
-		// 			Skeleton3D *skel = Object::cast_to<Skeleton3D>(skel_node);
-		// 			if (skel) {
-		// 				auto new_skin = skel->create_skin_from_rest_transforms();
-		// 				if (new_skin.is_valid()) {
-		// 					for (int32_t bone_i = 0; bone_i < skel->get_bone_count(); bone_i++) {
-		// 						new_skin->set_bind_name(bone_i, skel->get_bone_name(bone_i));
-		// 					}
-		// 					auto skin_ref = skel->register_skin(new_skin);
-		// 					if (skin_ref.is_valid()) {
-		// 						skin = skin_ref->get_skin();
-		// 						mesh_3d->set_skin(skin);
-		// 						skin = mesh_3d->get_skin();
-		// 					}
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// }
 		importer_mesh_3d->set_skeleton_path(mesh_3d->get_skeleton_path());
 		importer_mesh_3d->set_skin(skin);
 		Ref<ArrayMesh> array_mesh_3d_mesh = mesh_3d->get_mesh();

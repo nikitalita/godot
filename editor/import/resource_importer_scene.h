@@ -327,6 +327,7 @@ class EditorSceneFormatImporterESCN : public EditorSceneFormatImporter {
 	static Ref<Resource> convert_old_shader(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 	static Ref<Resource> convert_old_animation(const Ref<MissingResource> &p_res, Error &r_err, String &r_err_str);
 	void _recompute_animation_tracks(AnimationPlayer *p_player);
+	void _fix_old_format_scene(Node *p_node);
 
 public:
 	virtual uint32_t get_import_flags() const override;
