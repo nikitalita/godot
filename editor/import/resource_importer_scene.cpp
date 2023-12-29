@@ -2832,8 +2832,21 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 	 * 					  /= baz / 2.0 * bar /= foo));
 	 * ```
 	 */
-	// TODO: actually invert the value and handle left hand assignments; for now just replace the name
-	new_code = new_code.replace("CLEARCOAT_GLOSS", "CLEARCOAT_ROUGHNESS");
+
+	String new_code;
+	for (int i = 0; i < lines.size(); i++) {
+		if (lines[i].contains("CLEARCOAT_GLOSS")) {
+			// TODO: for right now, a very simple way to handle all of this; we really should be doing all of the above
+			// but this is a quick and dirty way to get it working
+			lines.insert(i + 1, "CLEARCOAT_ROUGHNESS = (1.0 - CLEARCOAT_GLOSS);");
+			lines.insert(i, "float CLEARCOAT_GLOSS = (1.0 - CLEARCOAT_ROUGHNESS);");
+			i += 2;
+		}
+	}
+	// join the lines back together
+	for (String line : lines) {
+		new_code += line + "\n";
+	}
 
 	shader->set_code(new_code);
 	r_err = OK;
