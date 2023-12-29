@@ -2842,14 +2842,16 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 	} else { // 3.x didn't support any other shader types
 		SDCONV_LINE_FAIL(new_code_tokens[1].line, "Invalid 3.x shader type");
 	}
-	bool has_screen_texture, has_depth_texture, has_roughness_texture = false;
+	bool has_screen_texture = false;
+	bool has_depth_texture = false;
+	bool has_roughness_texture = false;
 	static const char *uniform_format = "\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
 	HashMap<int, String> pending_closures;
-	static auto insert_func = [](HashMap<int, String> &pending_closures, int tk_idx, const String &closure_string) {
-		if (pending_closures.has(tk_idx)) {
-			pending_closures[tk_idx] += closure_string;
+	static auto insert_func = [](HashMap<int, String> &closures, int tk_idx, const String &closure_string) {
+		if (closures.has(tk_idx)) {
+			closures[tk_idx] += closure_string;
 		} else {
-			pending_closures.insert(tk_idx, closure_string);
+			closures.insert(tk_idx, closure_string);
 		}
 	};
 	for (int i = 3; i < new_code_tokens.size(); i++) {
@@ -2946,11 +2948,13 @@ String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_co
 										additional_closures++;
 										break;
 									case ShaderLanguage::TK_PARENTHESIS_CLOSE:
-									case ShaderLanguage::TK_BRACKET_CLOSE:
+									case ShaderLanguage::TK_BRACKET_CLOSE: {
 										if (additional_closures != 0) {
 											additional_closures--;
-											break;
-										} // otherwise, fall-through
+										}
+										assign_closure_end_idx = j;
+										insert_func(pending_closures, assign_closure_end_idx, "))");
+									} break;
 									case ShaderLanguage::TK_SEMICOLON: {
 										assign_closure_end_idx = j;
 										insert_func(pending_closures, assign_closure_end_idx, "))");
