@@ -246,6 +246,7 @@ ShaderLanguage::Token ShaderLanguage::_make_token(TokenType p_type, const String
 	tk.type = p_type;
 	tk.text = p_text;
 	tk.line = tk_line;
+	tk.pos = tk_start_pos;
 	if (tk.type == TK_ERROR) {
 		_set_error(p_text);
 	}
@@ -398,6 +399,7 @@ ShaderLanguage::Token ShaderLanguage::_get_token() {
 #define GETCHAR(m_idx) (((char_idx + m_idx) < code.length()) ? code[char_idx + m_idx] : char32_t(0))
 
 	while (true) {
+		tk_start_pos = char_idx;
 		char_idx++;
 		switch (GETCHAR(-1)) {
 			case 0:
@@ -833,6 +835,7 @@ ShaderLanguage::Token ShaderLanguage::_get_token() {
 						tk.constant = str.to_float();
 					}
 					tk.line = tk_line;
+					tk.pos = tk_start_pos;
 
 					return tk;
 				}
@@ -902,14 +905,27 @@ String ShaderLanguage::token_debug(const String &p_code) {
 	code = p_code;
 
 	String output;
-
 	Token tk = _get_token();
+
 	while (tk.type != TK_EOF && tk.type != TK_ERROR) {
-		output += itos(tk_line) + ": " + get_token_text(tk) + "\n";
+		output += itos(tk_line) + " (" + itos(tk.pos) + "): " + get_token_text(tk) + "\n";
 		tk = _get_token();
 	}
 
 	return output;
+}
+
+void ShaderLanguage::token_debug_stream(const String &p_code, Vector<Token> &r_output) {
+	clear();
+
+	code = p_code;
+
+	Token tk = _get_token();
+
+	while (tk.type != TK_EOF && tk.type != TK_ERROR) {
+		r_output.push_back(tk);
+		tk = _get_token();
+	}
 }
 
 bool ShaderLanguage::is_token_variable_datatype(TokenType p_type) {

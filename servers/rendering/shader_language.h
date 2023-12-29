@@ -759,6 +759,7 @@ public:
 		StringName text;
 		double constant;
 		uint16_t line;
+		uint16_t pos;
 		bool is_integer_constant() const {
 			return type == TK_INT_CONSTANT || type == TK_UINT_CONSTANT;
 		}
@@ -952,6 +953,7 @@ private:
 	String code;
 	int char_idx = 0;
 	int tk_line = 0;
+	int tk_start_pos = 0;
 
 	StringName shader_type_identifier;
 	StringName current_function;
@@ -1150,6 +1152,7 @@ public:
 	ShaderNode *get_shader();
 
 	String token_debug(const String &p_code);
+	void token_debug_stream(const String &p_code, Vector<Token> &r_output);
 
 	ShaderLanguage();
 	~ShaderLanguage();
