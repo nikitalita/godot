@@ -2741,312 +2741,691 @@ void ResourceImporterScene::get_scene_importer_extensions(List<String> *p_extens
 
 ///////////////////////////////////////
 
-String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_code, String &r_err_str) {
-	/**
-	 * We need to do the following:
-	 *  * Replace everything in RenamesMap3To4::shaders_renames
-	 *	* the usage of SCREEN_TEXTURE, DEPTH_TEXTURE, and NORMAL_ROUGHNESS_TEXTURE necessitates adding a uniform declaration at the top of the file
-	 *	* async_visible and async_hidden render modes need to be removed
-	 *	* If shader_type is "particles", need to rename the function "void vertex()" to "void process()"
-	 *  * Invert all usages of CLEARCOAT_GLOSS
-	 *    * invert all lefthand assignments
-	 * 			- `CLEARCOAT_GLOSS = 5.0 / foo;`
-	 * 			becomes: `CLEARCOAT_ROUGHNESS = (1.0 - (5.0 / foo));`,
-	 *          - `CLEARCOAT_GLOSS *= 1.1;`
-	 * 			becomes `CLEARCOAT_ROUGHNESS = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) * 1.1));`
-	 *    * invert all righthand usages
-	 * 			- `foo = CLEARCOAT_GLOSS;`
-	 * 			becomes: `foo = (1.0 - CLEARCOAT_ROUGHNESS);`
-	 *	* Check for use of `specular_blinn` and `specular_phong` render modes; not supported in 4.x, throw an error
-	 *	* Check for use of `MODULATE`; not supported in 4.x, throw an error
-	 */
-#define SDCONV_COND_FAIL(cond, msg)                                 \
-	if (cond) {                                                     \
-		r_err_str = "3.x Shader conversion failed: " + String(msg); \
-		return "";                                                  \
-	}
-#define SDCONV_COND_LINE_FAIL(cond, line, msg)                                               \
-	if (cond) {                                                                              \
-		r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
-		return "";                                                                           \
-	}
-#define SDCONV_LINE_FAIL(line, msg)                                                      \
-	r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
-	return "";
+static const char *token_to_str[ShaderLanguage::TK_MAX] = {
+	"", // TK_EMPTY
+	"", // TK_IDENTIFIER
+	"true",
+	"false",
+	"", // TK_FLOAT_CONSTANT
+	"", // TK_INT_CONSTANT
+	"", // TK_UINT_CONSTANT
+	"void",
+	"bool",
+	"bvec2",
+	"bvec3",
+	"bvec4",
+	"int",
+	"ivec2",
+	"ivec3",
+	"ivec4",
+	"uint",
+	"uvec2",
+	"uvec3",
+	"uvec4",
+	"float",
+	"vec2",
+	"vec3",
+	"vec4",
+	"mat2",
+	"mat3",
+	"mat4",
+	"sampler2D",
+	"isampler2D",
+	"usampler2D",
+	"sampler2DArray",
+	"isampler2DArray",
+	"usampler2DArray",
+	"sampler3D",
+	"isampler3D",
+	"usampler3D",
+	"samplerCube",
+	"samplerCubeArray",
+	"flat",
+	"smooth",
+	"const",
+	"struct",
+	"lowp",
+	"mediump",
+	"highp",
+	"==",
+	"!=",
+	"<",
+	"<=",
+	">",
+	">=",
+	"&&",
+	"||",
+	"!",
+	"+",
+	"-",
+	"*",
+	"/",
+	"%",
+	"<<",
+	">>",
+	"=",
+	"+=",
+	"-=",
+	"*=",
+	"/=",
+	"%=",
+	"<<=",
+	">>=",
+	"&=",
+	"|=",
+	"^=",
+	"&",
+	"|",
+	"^",
+	"~",
+	"++",
+	"--",
+	"if",
+	"else",
+	"for",
+	"while",
+	"do",
+	"switch",
+	"case",
+	"default",
+	"break",
+	"continue",
+	"return",
+	"discard",
+	"[",
+	"]",
+	"{",
+	"}",
+	"(",
+	")",
+	"?",
+	",",
+	":",
+	";",
+	".",
+	"uniform",
+	"group_uniforms",
+	"instance",
+	"global",
+	"varying",
+	"in",
+	"out",
+	"inout",
+	"render_mode",
+	"hint_default_white",
+	"hint_default_black",
+	"hint_default_transparent",
+	"hint_normal",
+	"hint_roughness_normal",
+	"hint_roughness_r",
+	"hint_roughness_g",
+	"hint_roughness_b",
+	"hint_roughness_a",
+	"hint_roughness_gray",
+	"hint_anisotropy",
+	"source_color",
+	"hint_range",
+	"instance_index",
+	"hint_screen_texture",
+	"hint_normal_roughness_texture",
+	"hint_depth_texture",
+	"filter_nearest",
+	"filter_linear",
+	"filter_nearest_mipmap",
+	"filter_linear_mipmap",
+	"filter_nearest_mipmap_anisotropic",
+	"filter_linear_mipmap_anisotropic",
+	"repeat_enable",
+	"repeat_disable",
+	"shader_type",
+	"", // TK_CURSOR
+	"", // TK_ERROR
+	"", // TK_EOF
+	"\t",
+	"\r",
+	" ",
+	"\n",
+	"", // TK_BLOCK_COMMENT
+	"", // TK_LINE_COMMENT
+	"", // TK_PREPROC_DIRECTIVE
+};
 
-	Vector<String> lines = p_code.split("\n");
-#ifdef MODULE_REGEX_ENABLED
-	LocalVector<RegEx *> shaders_regexes;
-	for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
-		shaders_regexes.push_back(memnew(RegEx(String("\\b") + RenamesMap3To4::shaders_renames[current_index][0] + "\\b")));
-	}
-	for (int i = 0; i < lines.size(); i++) {
-		String line = lines[i];
-		for (unsigned int current_index = 0; current_index < shaders_regexes.size(); current_index++) {
-			if (line.contains(RenamesMap3To4::shaders_renames[current_index][0])) {
-				line = shaders_regexes[current_index]->sub(line, RenamesMap3To4::shaders_renames[current_index][1], true);
-			}
-		}
-		lines.write[i] = line;
-	}
+class TokenStreamManip {
+	using TokenType = ShaderLanguage::TokenType;
+	using Token = ShaderLanguage::Token;
+	using TT = TokenType;
 
-#else
-	for (int i = 0; i < lines.size(); i++) {
-		String line = lines[i];
-		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
-			int index = line.find(RenamesMap3To4::shaders_renames[current_index][0]);
-			if (index != -1) {
-				int end = index + strlen(RenamesMap3To4::shaders_renames[current_index][0]);
-				// check if we are at a word boundary; if not, don't replace
-				if ((index == 0 || !is_ascii_identifier_char(line[index - 1])) &&
-						(end == line.length() || !is_ascii_identifier_char(line[end]))) {
-					line = line.replace_first(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
-					// keep checking until we don't find any more
-					current_index--;
-				}
-			}
-		}
-		lines.write[i] = line;
-	}
-#endif
-
-	String new_code;
-	// join the lines back together
-	for (String line : lines) {
-		new_code += line + "\n";
-	}
-	ShaderLanguage sl;
-	Vector<ShaderLanguage::Token> new_code_tokens;
-	sl.token_debug_stream(new_code, new_code_tokens);
-
-	String shader_type;
-	Vector<String> render_modes;
-	int offset = 0;
-	int shader_decl_end = 0;
-	RenderingServer::ShaderMode shader_mode;
-
-	// TK_SHADER_TYPE, TK_IDENTIFIER, TK_SEMICOLON are always the first three tokens in a 3.x shader file
-	SDCONV_COND_FAIL(new_code_tokens.size() < 3, "Invalid shader file");
-	SDCONV_COND_LINE_FAIL(new_code_tokens[0].type != ShaderLanguage::TK_SHADER_TYPE, new_code_tokens[0].line, "Shader type must be first token");
-	SDCONV_COND_LINE_FAIL(new_code_tokens[1].type != ShaderLanguage::TK_IDENTIFIER, new_code_tokens[1].line, "Invalid shader type");
-	shader_type = new_code_tokens[1].text;
-	SDCONV_COND_LINE_FAIL(new_code_tokens[2].type != ShaderLanguage::TK_SEMICOLON, new_code_tokens[2].line, "Expected semi-colon after shader type");
-
-	shader_decl_end = new_code_tokens[2].pos + 1;
-	if (shader_type == "spatial") {
-		shader_mode = RenderingServer::ShaderMode::SHADER_SPATIAL;
-	} else if (shader_type == "particles") {
-		shader_mode = RenderingServer::ShaderMode::SHADER_PARTICLES;
-	} else if (shader_type == "canvas_item") {
-		shader_mode = RenderingServer::ShaderMode::SHADER_CANVAS_ITEM;
-	} else { // 3.x didn't support any other shader types
-		SDCONV_LINE_FAIL(new_code_tokens[1].line, "Invalid 3.x shader type");
-	}
-	bool has_screen_texture = false;
-	bool has_depth_texture = false;
-	bool has_roughness_texture = false;
-	static const char *uniform_format = "\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
-	HashMap<int, String> pending_closures;
-	static auto insert_func = [](HashMap<int, String> &closures, int tk_idx, const String &closure_string) {
-		if (closures.has(tk_idx)) {
-			closures[tk_idx] += closure_string;
-		} else {
-			closures.insert(tk_idx, closure_string);
-		}
-	};
-	for (int i = 3; i < new_code_tokens.size(); i++) {
-		ShaderLanguage::Token &tk = new_code_tokens.write[i];
-		if (pending_closures.has(i)) {
-			// insert the closure string
-			String new_code_start = new_code.substr(0, offset + tk.pos);
-			String debugtthings = new_code_start.substr(new_code_start.size() - 300);
-			// insert closure right before the token
-			new_code = new_code.substr(0, offset + tk.pos - 1) + pending_closures[i] + new_code.substr(offset + tk.pos - 1);
-			offset += pending_closures[i].size();
-			pending_closures.erase(i);
-		}
+	List<Token> code_tokens;
+	List<Token>::Element *curr_ptr;
+	const String old_code;
+	bool first = false;
+	Token eof_token{ ShaderLanguage::TK_EOF, {}, 0, 0, 0, 0 };
+	bool token_is_skippable(const Token &tk) const {
 		switch (tk.type) {
-			case ShaderLanguage::TK_RENDER_MODE: {
-				// we only care about the ones for spatial
-				if (shader_mode == RenderingServer::ShaderMode::SHADER_SPATIAL) {
-					int render_mode_start = -1;
-					int render_mode_end = -1;
-					render_mode_start = tk.pos;
-					while (tk.type != ShaderLanguage::TK_SEMICOLON) {
-						SDCONV_COND_LINE_FAIL(++i >= new_code_tokens.size(), tk.line, "Invalid render mode declaration");
-						tk = new_code_tokens[i];
-						if (tk.type == ShaderLanguage::TK_IDENTIFIER) {
-							SDCONV_COND_LINE_FAIL(tk.text == "specular_blinn" || tk.text == "specular_phong", tk.line, "render mode" + tk.text + "is not supported by this version of Godot.");
-							render_modes.push_back(tk.text);
-						} else {
-							SDCONV_COND_LINE_FAIL(tk.type != ShaderLanguage::TK_COMMA && tk.type != ShaderLanguage::TK_SEMICOLON, tk.line, "Invalid render mode declaration");
-						}
-					}
-					render_mode_end = tk.pos + 1; // include the semicolon
-					// Remove the render_mode declaration; it will be added back after we finish parsing the tokens.
-					new_code = new_code.substr(0, offset + render_mode_start) + new_code.substr(offset + render_mode_end);
-					// Modify the offset.
-					offset -= (render_mode_end - render_mode_start);
-				}
-			} break;
-			case ShaderLanguage::TK_IDENTIFIER: {
-				if (tk.text == "SCREEN_TEXTURE" && !has_screen_texture) {
-					// format the string
-					has_screen_texture = true;
-					String uniform = vformat(uniform_format, "SCREEN_TEXTURE", "screen_texture");
-					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
-					offset += uniform.size();
-				} else if (tk.text == "DEPTH_TEXTURE" && !has_depth_texture) {
-					has_depth_texture = true;
-					String uniform = vformat(uniform_format, "DEPTH_TEXTURE", "depth_texture");
-					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
-					offset += uniform.size();
-				} else if (tk.text == "NORMAL_ROUGHNESS_TEXTURE" && !has_roughness_texture) {
-					has_roughness_texture = true;
-					String uniform = vformat(uniform_format, "NORMAL_ROUGHNESS_TEXTURE", "normal_roughness_texture");
-					new_code = new_code.substr(0, offset + shader_decl_end) + uniform + new_code.substr(offset + shader_decl_end);
-					offset += uniform.size();
-				} else if (shader_mode == RenderingServer::ShaderMode::SHADER_PARTICLES && tk.text == "vertex") {
-					// this may be the vertex function
-					SDCONV_COND_LINE_FAIL(i + 1 >= new_code_tokens.size(), tk.line, "unexpected end of file");
-					if (new_code_tokens[i - 1].type == ShaderLanguage::TK_TYPE_VOID || new_code_tokens[i + 1].type == ShaderLanguage::TK_PARENTHESIS_OPEN) {
-						// rename it to process
-						int vertex_start = tk.pos;
-						int vertex_end = vertex_start + 6;
-						new_code = new_code.substr(0, offset + vertex_start) + "process" + new_code.substr(offset + vertex_end);
-						offset += 1;
-					}
-				} else if (shader_mode == RenderingServer::ShaderMode::SHADER_CANVAS_ITEM && tk.text == "MODULATE") {
-					// This is not supported in Godot 4.x (yet, may be re-added).
-					SDCONV_LINE_FAIL(tk.line, "MODULATE is not supported by this version of Godot")
-				} else if (tk.text == "CLEARCOAT_GLOSS") {
-					int gloss_start = tk.pos;
-					SDCONV_COND_LINE_FAIL(i + 1 >= new_code_tokens.size(), tk.line, "unexpected end of file");
-					const ShaderLanguage::Token &prev_tk = new_code_tokens[i - 1];
-					const ShaderLanguage::Token &next_tk = new_code_tokens[i + 1];
-					int assign_closure_end_idx = 0;
-					ShaderLanguage::Token end_token;
-					String assign_str = "CLEARCOAT_ROUGHNESS";
-					int assign_end = 0;
-					bool is_assign = false;
-					switch (next_tk.type) {
-						case ShaderLanguage::TK_OP_ASSIGN:
-						case ShaderLanguage::TK_OP_ASSIGN_ADD:
-						case ShaderLanguage::TK_OP_ASSIGN_SUB:
-						case ShaderLanguage::TK_OP_ASSIGN_MUL:
-						case ShaderLanguage::TK_OP_ASSIGN_DIV: {
-							// need to find the end of this assignment closure
-							is_assign = true;
-							SDCONV_COND_LINE_FAIL(i + 2 >= new_code_tokens.size(), next_tk.line, "unexpected end of file");
-							assign_end = next_tk.pos + (next_tk.type == ShaderLanguage::TK_OP_ASSIGN ? 1 : 2);
-
-							int additional_closures = 0;
-							for (int j = i + 2; j < new_code_tokens.size(); j++) {
-								switch (new_code_tokens[j].type) {
-									case ShaderLanguage::TK_PARENTHESIS_OPEN:
-									case ShaderLanguage::TK_BRACKET_OPEN:
-										additional_closures++;
-										break;
-									case ShaderLanguage::TK_PARENTHESIS_CLOSE:
-									case ShaderLanguage::TK_BRACKET_CLOSE: {
-										if (additional_closures != 0) {
-											additional_closures--;
-										}
-										assign_closure_end_idx = j;
-										insert_func(pending_closures, assign_closure_end_idx, "))");
-									} break;
-									case ShaderLanguage::TK_SEMICOLON: {
-										assign_closure_end_idx = j;
-										insert_func(pending_closures, assign_closure_end_idx, "))");
-									} break;
-									default:
-										break;
-								}
-								if (assign_closure_end_idx) {
-									break;
-								}
-							}
-						} break;
-						default:
-							assign_closure_end_idx = i + 1;
-							assign_end = tk.pos + 15; // length of "CLEARCOAT_GLOSS"
-							break;
-					}
-					switch (next_tk.type) {
-						case ShaderLanguage::TK_OP_ASSIGN: {
-							assign_str += " = (1.0 - (";
-						} break;
-						case ShaderLanguage::TK_OP_ASSIGN_ADD:
-							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) +";
-							break;
-						case ShaderLanguage::TK_OP_ASSIGN_SUB:
-							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) -";
-							break;
-						case ShaderLanguage::TK_OP_ASSIGN_MUL: {
-							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) *";
-						} break;
-						case ShaderLanguage::TK_OP_ASSIGN_DIV: {
-							assign_str += " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) /";
-						} break;
-						default:
-							break;
-					}
-					// now we need to check the previous token
-					// if this is anything but a `{` or `;`, we need to invert it
-					switch (prev_tk.type) {
-						case ShaderLanguage::TK_CURLY_BRACKET_OPEN:
-						case ShaderLanguage::TK_SEMICOLON: {
-							// no need to wrap it in a closure, just replace it
-							new_code = new_code.substr(0, offset + gloss_start) + assign_str + new_code.substr(offset + assign_end);
-							offset += assign_str.size() - (assign_end - gloss_start);
-						} break;
-						default: {
-							// invert it
-							String invert_str; // need a closure around the assign statement
-							if (is_assign) {
-								invert_str = "(1.0 - (" + assign_str;
-								insert_func(pending_closures, assign_closure_end_idx, "))");
-							} else {
-								invert_str = "(1.0 - " + assign_str + ")";
-							}
-							new_code = new_code.substr(0, offset + gloss_start) + invert_str + new_code.substr(offset + assign_end);
-							offset += invert_str.size() - (assign_end - gloss_start);
-						} break;
-					}
-					// skip over the assignment token if there is one
-					if (is_assign) {
-						i++;
-					}
-				}
-			} break; // ShaderLanguage::TK_IDENTIFIER
+			case ShaderLanguage::TK_TAB:
+			case ShaderLanguage::TK_CR:
+			case ShaderLanguage::TK_SPACE:
+			case ShaderLanguage::TK_NEWLINE:
+			case ShaderLanguage::TK_BLOCK_COMMENT:
+			case ShaderLanguage::TK_LINE_COMMENT:
+			case ShaderLanguage::TK_PREPROC_DIRECTIVE:
+				return true;
 			default:
 				break;
 		}
-	}
-	if (!render_modes.is_empty()) {
-		if (shader_mode == RenderingServer::ShaderMode::SHADER_SPATIAL) {
-			if (render_modes.has("async_visible")) {
-				render_modes.remove_at(render_modes.find("async_visible"));
-			}
-			if (render_modes.has("async_hidden")) {
-				render_modes.remove_at(render_modes.find("async_hidden"));
-			}
-			// join all the render modes together and create a new render mode string
-			String render_mode_line = "\nrender_mode ";
-			for (int i = 0; i < render_modes.size(); i++) {
-				render_mode_line += render_modes[i];
-				if (i != render_modes.size() - 1) {
-					render_mode_line += ", ";
-				}
-			}
-			render_mode_line += ";\n";
-			new_code = new_code.substr(0, shader_decl_end) + render_mode_line + new_code.substr(shader_decl_end);
+		return false;
+	};
+	List<Token>::Element *_get_next_token_ptr(List<Token>::Element *_curr_ptr, bool skip_first = false) const {
+		ERR_FAIL_COND_V(_curr_ptr == nullptr, _curr_ptr);
+		if (_curr_ptr->next() == nullptr) {
+			return _curr_ptr;
 		}
+		_curr_ptr = _curr_ptr->next();
+		while (token_is_skippable(_curr_ptr->get())) {
+			if (_curr_ptr->next() == nullptr) {
+				return _curr_ptr;
+			}
+			_curr_ptr = _curr_ptr->next();
+		}
+		return _curr_ptr;
+	};
+	List<Token>::Element *_get_prev_token_ptr(List<Token>::Element *_curr_ptr) const {
+		ERR_FAIL_COND_V(_curr_ptr == nullptr, _curr_ptr);
+		if (_curr_ptr->prev() == nullptr) {
+			return _curr_ptr;
+		}
+		_curr_ptr = _curr_ptr->prev();
+		while (token_is_skippable(_curr_ptr->get())) {
+			if (_curr_ptr->prev() == nullptr) {
+				return _curr_ptr;
+			}
+			_curr_ptr = _curr_ptr->prev();
+		}
+		return _curr_ptr;
+	};
+	List<Token>::Element *get_next_token() {
+		curr_ptr = _get_next_token_ptr(curr_ptr, first);
+		return curr_ptr;
+	};
+	List<Token>::Element *get_prev_token() {
+		curr_ptr = _get_prev_token_ptr(curr_ptr);
+		return curr_ptr;
+	};
+	List<Token>::Element *remove_cur_and_get_next() {
+		ERR_FAIL_COND_V(!curr_ptr, nullptr);
+		List<Token>::Element *prev = curr_ptr->prev();
+		if (!prev) {
+			prev = curr_ptr->next();
+			code_tokens.erase(curr_ptr);
+			while (token_is_skippable(prev->get())) {
+				if (prev->next() == nullptr) {
+					return prev;
+				}
+				prev = prev->next();
+			}
+			return prev;
+		}
+		code_tokens.erase(curr_ptr);
+		curr_ptr = prev;
+		return get_next_token();
+	};
+	TokenType _peek_tk_type(int64_t count, List<Token>::Element **r_pos = nullptr) const {
+		ERR_FAIL_COND_V(!curr_ptr, ShaderLanguage::TK_EOF);
+		if (count == 0) {
+			return curr_ptr->get().type;
+		}
+
+		bool backwards = count < 0;
+		uint64_t max_count = abs(count);
+		auto start_ptr = curr_ptr;
+		for (int i = 0; i < max_count; i++) {
+			auto _ptr = backwards ? _get_prev_token_ptr(start_ptr) : _get_next_token_ptr(start_ptr);
+			if (!_ptr) {
+				if (r_pos) {
+					*r_pos = start_ptr;
+				}
+				return ShaderLanguage::TK_EOF;
+			}
+			start_ptr = _ptr;
+		}
+		if (r_pos) {
+			*r_pos = start_ptr;
+		}
+		return start_ptr->get().type;
 	}
-#undef SDCONV_COND_FAIL
-#undef SDCONV_COND_LINE_FAIL
-#undef SDCONV_LINE_FAIL
-	return new_code;
+	TokenType peek_next_tk_type(uint32_t count = 1) const {
+		return _peek_tk_type(count);
+	};
+	TokenType peek_prev_tk_type(uint32_t count = 1) const {
+		return _peek_tk_type(-((int64_t)count));
+	};
+	List<Token>::Element *get_pos() const {
+		ERR_FAIL_COND_V(!curr_ptr, nullptr);
+		return curr_ptr;
+	};
+	enum {
+		NEW_IDENT = -1
+	};
+	bool reset_to(List<Token>::Element *p_pos) {
+		ERR_FAIL_COND_V(p_pos == nullptr, false);
+		curr_ptr = p_pos;
+		return true;
+	};
+	bool insert_after(const Vector<Token> &token_list, List<Token>::Element *p_pos) {
+		ERR_FAIL_COND_V(p_pos == nullptr, false);
+		for (int i = token_list.size() - 1; i >= 0; i--) {
+			const Token &tk = token_list[i];
+			code_tokens.insert_after(p_pos, { tk.type, tk.text, tk.constant, tk.line, tk.length, NEW_IDENT });
+		}
+		return true;
+	};
+	bool insert_before(const Vector<Token> &token_list, List<Token>::Element *p_pos) {
+		ERR_FAIL_COND_V(p_pos == nullptr, false);
+		for (const Token &tk : token_list) {
+			code_tokens.insert_before(p_pos, { tk.type, tk.text, tk.constant, tk.line, tk.length, NEW_IDENT });
+		}
+		return true;
+	};
+	bool insert_after(const Token &token, List<Token>::Element *p_pos) {
+		ERR_FAIL_COND_V(p_pos == nullptr, false);
+		Token new_token = token;
+		new_token.pos = NEW_IDENT;
+		code_tokens.insert_after(p_pos, new_token);
+		return true;
+	};
+	bool insert_before(const Token &token, List<Token>::Element *p_pos) {
+		ERR_FAIL_COND_V(p_pos == nullptr, false);
+		Token new_token = token;
+		new_token.pos = NEW_IDENT;
+		code_tokens.insert_before(p_pos, new_token);
+		return true;
+	};
+	List<Token>::Element *replace_curr(const Token &token) {
+		ERR_FAIL_COND_V(curr_ptr == nullptr, nullptr);
+		Token new_token = token;
+		new_token.pos = NEW_IDENT;
+		List<Token>::Element *prev = curr_ptr;
+		curr_ptr = code_tokens.insert_before(curr_ptr, new_token);
+		code_tokens.erase(prev);
+		return curr_ptr;
+	};
+
+	bool _insert_uniform_declaration(const String &p_name, TokenType hint, List<Token>::Element *p_shader_decl_end_pos) {
+		if (p_shader_decl_end_pos == nullptr) {
+			return false;
+		}
+		//	"\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
+		return insert_after({ { TT::TK_NEWLINE }, { TT::TK_UNIFORM }, { TT::TK_SPACE }, { TT::TK_TYPE_SAMPLER2D },
+									{ TT::TK_SPACE }, { TT::TK_IDENTIFIER, p_name }, { TT::TK_SPACE }, { TT::TK_COLON },
+									{ TT::TK_SPACE }, { hint }, { TT::TK_COMMA }, { TT::TK_SPACE },
+									{ TT::TK_FILTER_LINEAR_MIPMAP }, { TT::TK_SEMICOLON },
+									{ TT::TK_NEWLINE } },
+				p_shader_decl_end_pos);
+	}
+	List<Token>::Element *_remove_from_curr_to(List<Token>::Element *p_end) {
+		ERR_FAIL_COND_V(p_end == nullptr, nullptr);
+		while (curr_ptr != p_end) {
+			auto next = curr_ptr->next();
+			code_tokens.erase(curr_ptr);
+			curr_ptr = next;
+		}
+		return curr_ptr;
+	}
+
+	List<Token>::Element *_get_end_of_closure() {
+		int additional_closures = 0;
+		int iters = 0;
+		bool found = false;
+		List<Token>::Element *ptr = curr_ptr;
+		for (; ptr; ptr = ptr->next()) {
+			switch (ptr->get().type) {
+				case TT::TK_CURLY_BRACKET_OPEN:
+				case TT::TK_PARENTHESIS_OPEN:
+				case TT::TK_BRACKET_OPEN: {
+					additional_closures++;
+				} break;
+				case TT::TK_CURLY_BRACKET_CLOSE:
+				case TT::TK_PARENTHESIS_CLOSE:
+				case TT::TK_BRACKET_CLOSE: {
+					if (additional_closures != 0) {
+						additional_closures--;
+						break;
+					}
+					return ptr;
+				} break;
+				case TT::TK_SEMICOLON: {
+					return _get_prev_token_ptr(ptr);
+				} break;
+				case TT::TK_EOF:
+				case TT::TK_ERROR: {
+					ptr = _get_prev_token_ptr(ptr);
+					ERR_FAIL_V(ptr);
+				} break;
+				default:
+					break;
+			}
+		}
+		return ptr;
+	}
+
+public:
+	bool convert_code(String &r_err_str) {
+		/**
+		 * We need to do the following:
+		 *  * Replace everything in RenamesMap3To4::shaders_renames
+		 *	* the usage of SCREEN_TEXTURE, DEPTH_TEXTURE, and NORMAL_ROUGHNESS_TEXTURE necessitates adding a uniform declaration at the top of the file
+		 *	* async_visible and async_hidden render modes need to be removed
+		 *	* If shader_type is "particles", need to rename the function "void vertex()" to "void process()"
+		 *  * Invert all usages of CLEARCOAT_GLOSS
+		 *    * invert all lefthand assignments
+		 * 			- `CLEARCOAT_GLOSS = 5.0 / foo;`
+		 * 			becomes: `CLEARCOAT_ROUGHNESS = (1.0 - (5.0 / foo));`,
+		 *          - `CLEARCOAT_GLOSS *= 1.1;`
+		 * 			becomes `CLEARCOAT_ROUGHNESS = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) * 1.1));`
+		 *    * invert all righthand usages
+		 * 			- `foo = CLEARCOAT_GLOSS;`
+		 * 			becomes: `foo = (1.0 - CLEARCOAT_ROUGHNESS);`
+		 *	* Check for use of `specular_blinn` and `specular_phong` render modes; not supported in 4.x, throw an error
+		 *	* Check for use of `MODULATE`; not supported in 4.x, throw an error
+		 */
+#define SDCONV_COND_FAIL(cond, msg)                                 \
+	if (unlikely(cond)) {                                           \
+		r_err_str = "3.x Shader conversion failed: " + String(msg); \
+		return false;                                               \
+	}
+#define SDCONV_COND_LINE_FAIL(cond, line, msg)                                               \
+	if (unlikely(cond)) {                                                                    \
+		r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
+		return false;                                                                        \
+	}
+#define SDCONV_LINE_FAIL(line, msg)                                                      \
+	r_err_str = "3.x Shader conversion failed: Line " + itos(line) + ": " + String(msg); \
+	return false;
+		SDCONV_COND_FAIL(code_tokens.size() == 0, "Empty shader file");
+		if (code_tokens.back()->get().type != TT::TK_EOF) {
+			SDCONV_COND_LINE_FAIL(code_tokens.back()->get().type == TT::TK_ERROR, code_tokens.back()->get().line, "Parser error (" + code_tokens.back()->get().text + ")");
+			code_tokens.push_back(eof_token);
+		}
+		// TK_SHADER_TYPE, TK_IDENTIFIER, TK_SEMICOLON are always the first three tokens in a 3.x shader file
+		curr_ptr = code_tokens.front();
+
+		String shader_type;
+		RenderingServer::ShaderMode shader_mode;
+		{
+			SDCONV_COND_FAIL(code_tokens.size() < 3, "Invalid shader file");
+			auto first_token = get_next_token();
+			SDCONV_COND_LINE_FAIL(first_token->get().type != TT::TK_SHADER_TYPE, first_token->get().line, "Shader type must be first token");
+			auto id_token = get_next_token();
+			SDCONV_COND_LINE_FAIL(id_token->get().type != TT::TK_IDENTIFIER, id_token->get().line, "Invalid shader type");
+			String shader_type = id_token->get().text;
+			auto token = get_next_token();
+			SDCONV_COND_LINE_FAIL(token->get().type != TT::TK_SEMICOLON, token->get().line, "Expected semi-colon after shader type");
+			if (shader_type == "spatial") {
+				shader_mode = RenderingServer::ShaderMode::SHADER_SPATIAL;
+			} else if (shader_type == "particles") {
+				shader_mode = RenderingServer::ShaderMode::SHADER_PARTICLES;
+			} else if (shader_type == "canvas_item") {
+				shader_mode = RenderingServer::ShaderMode::SHADER_CANVAS_ITEM;
+			} else { // 3.x didn't support any other shader types
+				SDCONV_LINE_FAIL(id_token->get().line, "Invalid 3.x shader type");
+			}
+		}
+		List<Token>::Element *after_type_decl = get_pos();
+
+		HashMap<String, String> renames;
+		HashMap<String, Token> hint_renames;
+		for (unsigned int current_index = 0; RenamesMap3To4::shaders_renames[current_index][0]; current_index++) {
+			String old_name = RenamesMap3To4::shaders_renames[current_index][0];
+			if (old_name.begins_with("hint_")) {
+				if (old_name == "hint_albedo") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_SOURCE_COLOR, {}, 0, 0, 0, 0 });
+				} else if (old_name == "hint_aniso") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_ANISOTROPY_TEXTURE, {}, 0, 0, 0, 0 });
+				} else if (old_name == "hint_black") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_BLACK_TEXTURE, {}, 0, 0, 0, 0 });
+				} else if (old_name == "hint_black_albedo") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_BLACK_TEXTURE, {}, 0, 0, 0, 0 });
+				} else if (old_name == "hint_color") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_SOURCE_COLOR, {}, 0, 0, 0, 0 });
+				} else if (old_name == "hint_white") {
+					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_WHITE_TEXTURE, {}, 0, 0, 0, 0 });
+				} else { // this shouldn't ever happen
+					r_err_str = "No hint rename!?!?!?";
+					ERR_FAIL_V_MSG(false, r_err_str);
+				}
+			} else {
+				renames.insert(RenamesMap3To4::shaders_renames[current_index][0], RenamesMap3To4::shaders_renames[current_index][1]);
+			}
+		}
+		bool has_screen_texture = false;
+		bool has_depth_texture = false;
+		bool has_roughness_texture = false;
+
+		while (true) {
+			auto cur_tok = get_next_token();
+			if (cur_tok->get().type == TT::TK_EOF) {
+				break;
+			}
+			switch (cur_tok->get().type) {
+				case TT::TK_RENDER_MODE: {
+					// we only care about the ones for spatial
+					if (shader_mode == RenderingServer::ShaderMode::SHADER_SPATIAL) {
+						while (true) {
+							auto next_tk = get_next_token();
+							if (next_tk->get().type == TT::TK_IDENTIFIER) {
+								SDCONV_COND_LINE_FAIL(next_tk->get().text == "specular_blinn" || next_tk->get().text == "specular_phong", next_tk->get().line, "render mode" + next_tk->get().text + "is not supported by this version of Godot.");
+								if (next_tk->get().text == "async_visible" || next_tk->get().text == "async_hidden") {
+									next_tk = remove_cur_and_get_next();
+									if (next_tk->get().type == TT::TK_COMMA) {
+										next_tk = remove_cur_and_get_next();
+									} else {
+										if (peek_prev_tk_type() == TT::TK_RENDER_MODE && next_tk->get().type == TT::TK_SEMICOLON) {
+											// we need to remove this line entirely
+											auto end = get_pos()->next();
+											next_tk = get_prev_token();
+											next_tk = _remove_from_curr_to(end);
+											break;
+										}
+									}
+								}
+							} else {
+								SDCONV_COND_LINE_FAIL(next_tk->get().type != TT::TK_COMMA && next_tk->get().type != TT::TK_SEMICOLON, next_tk->get().line, "Invalid render mode declaration");
+							}
+							if (next_tk->get().type == TT::TK_SEMICOLON) {
+								break;
+							}
+						}
+					}
+				} break;
+				case TT::TK_IDENTIFIER: {
+					if (cur_tok->get().text == "SCREEN_TEXTURE" && !has_screen_texture) {
+						has_screen_texture = true;
+						SDCONV_COND_LINE_FAIL(!_insert_uniform_declaration("SCREEN_TEXTURE", TT::TK_HINT_SCREEN_TEXTURE, after_type_decl), cur_tok->get().line, "Failed to insert uniform declaration");
+					} else if (cur_tok->get().text == "DEPTH_TEXTURE" && !has_depth_texture) {
+						has_depth_texture = true;
+						SDCONV_COND_LINE_FAIL(!_insert_uniform_declaration("DEPTH_TEXTURE", TT::TK_HINT_DEPTH_TEXTURE, after_type_decl), cur_tok->get().line, "Failed to insert uniform declaration");
+					} else if (cur_tok->get().text == "NORMAL_ROUGHNESS_TEXTURE" && !has_roughness_texture) {
+						has_roughness_texture = true;
+						SDCONV_COND_LINE_FAIL(!_insert_uniform_declaration("NORMAL_ROUGHNESS_TEXTURE", TT::TK_HINT_NORMAL_ROUGHNESS_TEXTURE, after_type_decl), cur_tok->get().line, "Failed to insert uniform declaration");
+					} else if (shader_mode == RenderingServer::ShaderMode::SHADER_PARTICLES && cur_tok->get().text == "vertex") {
+						if (peek_prev_tk_type() == TT::TK_TYPE_VOID || peek_next_tk_type() == TT::TK_PARENTHESIS_OPEN) {
+							replace_curr({ TT::TK_IDENTIFIER, "process" });
+						}
+					} else if (shader_mode == RenderingServer::ShaderMode::SHADER_CANVAS_ITEM && cur_tok->get().text == "MODULATE") {
+						// This is not supported in Godot 4.x (yet, may be re-added).
+						SDCONV_LINE_FAIL(cur_tok->get().line, "MODULATE is not supported by this version of Godot")
+					} else if (cur_tok->get().text == "CLEARCOAT_GLOSS") {
+						cur_tok = replace_curr({ TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS" });
+						Token end_token;
+						List<Token>::Element *assign_closure_end = nullptr;
+						switch (peek_next_tk_type()) {
+							case TT::TK_OP_ASSIGN:
+							case TT::TK_OP_ASSIGN_ADD:
+							case TT::TK_OP_ASSIGN_SUB:
+							case TT::TK_OP_ASSIGN_MUL:
+							case TT::TK_OP_ASSIGN_DIV: {
+								assign_closure_end = _get_end_of_closure();
+								{
+									auto assign_tk = get_next_token();
+									// " = (1.0 - ("
+									Vector<Token> pending_closures = {
+										{ TT::TK_OP_ASSIGN },
+										{ TT::TK_SPACE },
+										{ TT::TK_PARENTHESIS_OPEN },
+										{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
+										{ TT::TK_SPACE },
+										{ TT::TK_OP_SUB },
+										{ TT::TK_SPACE },
+										{ TT::TK_PARENTHESIS_OPEN },
+									};
+									if (assign_tk->get().type != TT::TK_OP_ASSIGN) {
+										// " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) {op}
+										pending_closures.append_array(
+												{ { TT::TK_PARENTHESIS_OPEN },
+														{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
+														{ TT::TK_SPACE },
+														{ TT::TK_OP_SUB },
+														{ TT::TK_SPACE },
+														{ TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS" },
+														{ TT::TK_PARENTHESIS_CLOSE },
+														{ TT::TK_SPACE } });
+									}
+									switch (assign_tk->get().type) {
+										case TT::TK_OP_ASSIGN_ADD: {
+											pending_closures.push_back({ TT::TK_OP_ADD });
+										} break;
+										case TT::TK_OP_ASSIGN_SUB: {
+											pending_closures.push_back({ TT::TK_OP_SUB });
+										} break;
+										case TT::TK_OP_ASSIGN_MUL: {
+											pending_closures.push_back({ TT::TK_OP_MUL });
+										} break;
+										case TT::TK_OP_ASSIGN_DIV: {
+											pending_closures.push_back({ TT::TK_OP_DIV });
+										} break;
+										default:
+											break;
+									}
+									insert_before(pending_closures, assign_tk);
+								}
+								remove_cur_and_get_next();
+								insert_after({ { TT::TK_PARENTHESIS_CLOSE }, { TT::TK_PARENTHESIS_CLOSE } }, assign_closure_end);
+								reset_to(cur_tok);
+
+							} break;
+							default:
+								break;
+						}
+
+						// now we need to check the previous token
+						// if this is anything but a `{` or `;`, we need to invert it
+						if (peek_prev_tk_type() == TT::TK_SEMICOLON || peek_prev_tk_type() == TT::TK_CURLY_BRACKET_OPEN) {
+							break;
+						}
+						Vector<Token> pending_closures = {
+							{ TT::TK_PARENTHESIS_OPEN },
+							{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
+							{ TT::TK_SPACE },
+							{ TT::TK_OP_SUB },
+							{ TT::TK_SPACE }
+						};
+						if (assign_closure_end) {
+							// invert_str = "(1.0 - (" + assign_str;
+							pending_closures.append_array({ { TT::TK_PARENTHESIS_OPEN }, { TT::TK_SPACE } });
+							insert_after({ { TT::TK_PARENTHESIS_CLOSE }, { TT::TK_PARENTHESIS_CLOSE } }, assign_closure_end);
+						} else {
+							insert_after({ TT::TK_PARENTHESIS_CLOSE }, cur_tok);
+						}
+						insert_before(pending_closures, cur_tok);
+					} else if (renames.has(cur_tok->get().text)) {
+						replace_curr({ TT::TK_IDENTIFIER, renames[cur_tok->get().text] });
+					} else if (hint_renames.has(cur_tok->get().text)) {
+						replace_curr(hint_renames[cur_tok->get().text]);
+					}
+				} break; // end of identifier case
+				case TT::TK_ERROR: {
+					SDCONV_LINE_FAIL(cur_tok->get().line, "Parser error ( " + cur_tok->get().text + ")");
+				} break;
+				default:
+					break;
+			}
+		}
+		return true;
+	}
+
+	String emit_code() const {
+		if (code_tokens.size() == 0) {
+			return "";
+		}
+		String new_code = "";
+		const List<ShaderLanguage::Token>::Element *start = code_tokens.front()->next(); // skip TK_EOF token at start
+		for (auto E = start; E; E = E->next()) {
+			const Token &tk = E->get();
+			ERR_FAIL_COND_V(tk.type < 0 || tk.type > TT::TK_MAX, "");
+			bool end = false;
+			switch (tk.type) {
+				// remember that we can't trust the tk.name unless it's a newly inserted token
+				// same with constants
+				case TT::TK_PREPROC_DIRECTIVE:
+				case TT::TK_LINE_COMMENT:
+				case TT::TK_BLOCK_COMMENT:
+				case TT::TK_IDENTIFIER: {
+					if (tk.pos == NEW_IDENT) {
+						new_code += tk.text;
+					} else {
+						// don't trust the token text because it may have been modified by the ShaderLanguage parser
+						new_code += old_code.substr(tk.pos, tk.length);
+					}
+				} break;
+				case TT::TK_INT_CONSTANT:
+				case TT::TK_FLOAT_CONSTANT:
+				case TT::TK_UINT_CONSTANT: {
+					if (tk.pos == NEW_IDENT) {
+						String const_str = rtos(tk.constant);
+						if (!tk.is_integer_constant() && !const_str.contains(".")) {
+							const_str += ".0";
+						}
+						new_code += const_str;
+					} else {
+						new_code += old_code.substr(tk.pos, tk.length);
+					}
+				} break;
+				case TT::TK_ERROR:
+				case TT::TK_EOF: {
+					end = true;
+					new_code += "";
+				} break;
+
+				default: {
+					new_code += token_to_str[tk.type];
+				} break;
+			}
+			if (end) {
+				break;
+			}
+		}
+
+		return new_code;
+	}
+
+	TokenStreamManip() = delete;
+	TokenStreamManip(const String &p_code) :
+			old_code(p_code) {
+		ShaderLanguage sl;
+		sl.token_debug_stream(old_code, code_tokens, true);
+		code_tokens.push_back(eof_token);
+		code_tokens.push_front(eof_token);
+		curr_ptr = code_tokens.front();
+	}
+};
+
+String EditorSceneFormatImporterESCN::convert_old_shader_code(const String &p_code, String &r_err_str) {
+	// TODO: remove this
+	TokenStreamManip tsm(p_code);
+	if (!tsm.convert_code(r_err_str)) {
+		return String();
+	}
+	return tsm.emit_code();
 }
 
 int _get_starting_index(const List<PropertyInfo> &p_properties) {
@@ -3094,13 +3473,14 @@ Ref<Resource> EditorSceneFormatImporterESCN::convert_old_shader(const Ref<Missin
 			shader->set(prop.name, p_res->get(prop.name));
 		}
 	}
-	String new_code = convert_old_shader_code(code, r_err_str);
-	if (r_err_str != "") {
+	// String new_code = convert_old_shader_code(code, r_err_str);
+	TokenStreamManip tsm(code);
+	if (!tsm.convert_code(r_err_str)) {
 		r_err = ERR_FILE_CORRUPT;
 		return Ref<Resource>();
 	}
 	// sl.token_debug_stream(new_code, new_code_tokens);
-	shader->set_code(new_code);
+	shader->set_code(tsm.emit_code());
 	r_err = OK;
 	return shader;
 }
