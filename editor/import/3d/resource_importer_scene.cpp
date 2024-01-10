@@ -2977,7 +2977,7 @@ class TokenStreamManip {
 		bool backwards = count < 0;
 		uint64_t max_count = abs(count);
 		auto start_ptr = curr_ptr;
-		for (int i = 0; i < max_count; i++) {
+		for (uint64_t i = 0; i < max_count; i++) {
 			auto _ptr = backwards ? _get_prev_token_ptr(start_ptr) : _get_next_token_ptr(start_ptr);
 			if (!_ptr) {
 				if (r_pos) {
@@ -3048,17 +3048,20 @@ class TokenStreamManip {
 		code_tokens.erase(prev);
 		return curr_ptr;
 	};
+	Token mkTok(TokenType p_type, const StringName &p_text = StringName(), double constant = 0, uint16_t p_line = 0) {
+		return { p_type, p_text, constant, p_line, 0, NEW_IDENT };
+	};
 
 	bool _insert_uniform_declaration(const String &p_name, TokenType hint, List<Token>::Element *p_shader_decl_end_pos) {
 		if (p_shader_decl_end_pos == nullptr) {
 			return false;
 		}
 		//	"\nuniform sampler2D %s : hint_%s, filter_linear_mipmap;\n";
-		return insert_after({ { TT::TK_NEWLINE }, { TT::TK_UNIFORM }, { TT::TK_SPACE }, { TT::TK_TYPE_SAMPLER2D },
-									{ TT::TK_SPACE }, { TT::TK_IDENTIFIER, p_name }, { TT::TK_SPACE }, { TT::TK_COLON },
-									{ TT::TK_SPACE }, { hint }, { TT::TK_COMMA }, { TT::TK_SPACE },
-									{ TT::TK_FILTER_LINEAR_MIPMAP }, { TT::TK_SEMICOLON },
-									{ TT::TK_NEWLINE } },
+		return insert_after({ mkTok(TT::TK_NEWLINE), mkTok(TT::TK_UNIFORM), mkTok(TT::TK_SPACE), mkTok(TT::TK_TYPE_SAMPLER2D),
+									mkTok(TT::TK_SPACE), mkTok(TT::TK_IDENTIFIER, p_name), mkTok(TT::TK_SPACE), mkTok(TT::TK_COLON),
+									mkTok(TT::TK_SPACE), mkTok(hint), mkTok(TT::TK_COMMA), mkTok(TT::TK_SPACE),
+									mkTok(TT::TK_FILTER_LINEAR_MIPMAP), mkTok(TT::TK_SEMICOLON),
+									mkTok(TT::TK_NEWLINE) },
 				p_shader_decl_end_pos);
 	}
 	List<Token>::Element *_remove_from_curr_to(List<Token>::Element *p_end) {
@@ -3073,8 +3076,6 @@ class TokenStreamManip {
 
 	List<Token>::Element *_get_end_of_closure() {
 		int additional_closures = 0;
-		int iters = 0;
-		bool found = false;
 		List<Token>::Element *ptr = curr_ptr;
 		for (; ptr; ptr = ptr->next()) {
 			switch (ptr->get().type) {
@@ -3156,7 +3157,7 @@ public:
 			SDCONV_COND_LINE_FAIL(first_token->get().type != TT::TK_SHADER_TYPE, first_token->get().line, "Shader type must be first token");
 			auto id_token = get_next_token();
 			SDCONV_COND_LINE_FAIL(id_token->get().type != TT::TK_IDENTIFIER, id_token->get().line, "Invalid shader type");
-			String shader_type = id_token->get().text;
+			shader_type = id_token->get().text;
 			auto token = get_next_token();
 			SDCONV_COND_LINE_FAIL(token->get().type != TT::TK_SEMICOLON, token->get().line, "Expected semi-colon after shader type");
 			if (shader_type == "spatial") {
@@ -3177,17 +3178,17 @@ public:
 			String old_name = RenamesMap3To4::shaders_renames[current_index][0];
 			if (old_name.begins_with("hint_")) {
 				if (old_name == "hint_albedo") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_SOURCE_COLOR, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_SOURCE_COLOR));
 				} else if (old_name == "hint_aniso") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_ANISOTROPY_TEXTURE, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_ANISOTROPY_TEXTURE));
 				} else if (old_name == "hint_black") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_BLACK_TEXTURE, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_DEFAULT_BLACK_TEXTURE));
 				} else if (old_name == "hint_black_albedo") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_BLACK_TEXTURE, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_DEFAULT_BLACK_TEXTURE));
 				} else if (old_name == "hint_color") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_SOURCE_COLOR, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_SOURCE_COLOR));
 				} else if (old_name == "hint_white") {
-					hint_renames.insert(old_name, Token{ TT::TK_HINT_DEFAULT_WHITE_TEXTURE, {}, 0, 0, 0, 0 });
+					hint_renames.insert(old_name, mkTok(TT::TK_HINT_DEFAULT_WHITE_TEXTURE));
 				} else { // this shouldn't ever happen
 					r_err_str = "No hint rename!?!?!?";
 					ERR_FAIL_V_MSG(false, r_err_str);
@@ -3248,13 +3249,13 @@ public:
 						SDCONV_COND_LINE_FAIL(!_insert_uniform_declaration("NORMAL_ROUGHNESS_TEXTURE", TT::TK_HINT_NORMAL_ROUGHNESS_TEXTURE, after_type_decl), cur_tok->get().line, "Failed to insert uniform declaration");
 					} else if (shader_mode == RenderingServer::ShaderMode::SHADER_PARTICLES && cur_tok->get().text == "vertex") {
 						if (peek_prev_tk_type() == TT::TK_TYPE_VOID || peek_next_tk_type() == TT::TK_PARENTHESIS_OPEN) {
-							replace_curr({ TT::TK_IDENTIFIER, "process" });
+							replace_curr(mkTok(TT::TK_IDENTIFIER, "process"));
 						}
 					} else if (shader_mode == RenderingServer::ShaderMode::SHADER_CANVAS_ITEM && cur_tok->get().text == "MODULATE") {
 						// This is not supported in Godot 4.x (yet, may be re-added).
 						SDCONV_LINE_FAIL(cur_tok->get().line, "MODULATE is not supported by this version of Godot")
 					} else if (cur_tok->get().text == "CLEARCOAT_GLOSS") {
-						cur_tok = replace_curr({ TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS" });
+						cur_tok = replace_curr(mkTok(TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS"));
 						Token end_token;
 						List<Token>::Element *assign_closure_end = nullptr;
 						switch (peek_next_tk_type()) {
@@ -3268,39 +3269,39 @@ public:
 									auto assign_tk = get_next_token();
 									// " = (1.0 - ("
 									Vector<Token> pending_closures = {
-										{ TT::TK_OP_ASSIGN },
-										{ TT::TK_SPACE },
-										{ TT::TK_PARENTHESIS_OPEN },
-										{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
-										{ TT::TK_SPACE },
-										{ TT::TK_OP_SUB },
-										{ TT::TK_SPACE },
-										{ TT::TK_PARENTHESIS_OPEN },
+										mkTok(TT::TK_OP_ASSIGN),
+										mkTok(TT::TK_SPACE),
+										mkTok(TT::TK_PARENTHESIS_OPEN),
+										mkTok(TT::TK_FLOAT_CONSTANT, {}, 1.0),
+										mkTok(TT::TK_SPACE),
+										mkTok(TT::TK_OP_SUB),
+										mkTok(TT::TK_SPACE),
+										mkTok(TT::TK_PARENTHESIS_OPEN),
 									};
 									if (assign_tk->get().type != TT::TK_OP_ASSIGN) {
 										// " = (1.0 - ((1.0 - CLEARCOAT_ROUGHNESS) {op}
 										pending_closures.append_array(
-												{ { TT::TK_PARENTHESIS_OPEN },
-														{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
-														{ TT::TK_SPACE },
-														{ TT::TK_OP_SUB },
-														{ TT::TK_SPACE },
-														{ TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS" },
-														{ TT::TK_PARENTHESIS_CLOSE },
-														{ TT::TK_SPACE } });
+												{ mkTok(TT::TK_PARENTHESIS_OPEN),
+														mkTok(TT::TK_FLOAT_CONSTANT, {}, 1.0),
+														mkTok(TT::TK_SPACE),
+														mkTok(TT::TK_OP_SUB),
+														mkTok(TT::TK_SPACE),
+														mkTok(TT::TK_IDENTIFIER, "CLEARCOAT_ROUGHNESS"),
+														mkTok(TT::TK_PARENTHESIS_CLOSE),
+														mkTok(TT::TK_SPACE) });
 									}
 									switch (assign_tk->get().type) {
 										case TT::TK_OP_ASSIGN_ADD: {
-											pending_closures.push_back({ TT::TK_OP_ADD });
+											pending_closures.push_back(mkTok(TT::TK_OP_ADD));
 										} break;
 										case TT::TK_OP_ASSIGN_SUB: {
-											pending_closures.push_back({ TT::TK_OP_SUB });
+											pending_closures.push_back(mkTok(TT::TK_OP_SUB));
 										} break;
 										case TT::TK_OP_ASSIGN_MUL: {
-											pending_closures.push_back({ TT::TK_OP_MUL });
+											pending_closures.push_back(mkTok(TT::TK_OP_MUL));
 										} break;
 										case TT::TK_OP_ASSIGN_DIV: {
-											pending_closures.push_back({ TT::TK_OP_DIV });
+											pending_closures.push_back(mkTok(TT::TK_OP_DIV));
 										} break;
 										default:
 											break;
@@ -3308,7 +3309,7 @@ public:
 									insert_before(pending_closures, assign_tk);
 								}
 								remove_cur_and_get_next();
-								insert_after({ { TT::TK_PARENTHESIS_CLOSE }, { TT::TK_PARENTHESIS_CLOSE } }, assign_closure_end);
+								insert_after({ mkTok(TT::TK_PARENTHESIS_CLOSE), mkTok(TT::TK_PARENTHESIS_CLOSE) }, assign_closure_end);
 								reset_to(cur_tok);
 
 							} break;
@@ -3322,22 +3323,22 @@ public:
 							break;
 						}
 						Vector<Token> pending_closures = {
-							{ TT::TK_PARENTHESIS_OPEN },
-							{ TT::TK_FLOAT_CONSTANT, {}, 1.0 },
-							{ TT::TK_SPACE },
-							{ TT::TK_OP_SUB },
-							{ TT::TK_SPACE }
+							mkTok(TT::TK_PARENTHESIS_OPEN),
+							mkTok(TT::TK_FLOAT_CONSTANT, {}, 1.0),
+							mkTok(TT::TK_SPACE),
+							mkTok(TT::TK_OP_SUB),
+							mkTok(TT::TK_SPACE)
 						};
 						if (assign_closure_end) {
 							// invert_str = "(1.0 - (" + assign_str;
-							pending_closures.append_array({ { TT::TK_PARENTHESIS_OPEN }, { TT::TK_SPACE } });
-							insert_after({ { TT::TK_PARENTHESIS_CLOSE }, { TT::TK_PARENTHESIS_CLOSE } }, assign_closure_end);
+							pending_closures.append_array({ mkTok(TT::TK_PARENTHESIS_OPEN), mkTok(TT::TK_SPACE) });
+							insert_after({ mkTok(TT::TK_PARENTHESIS_CLOSE), mkTok(TT::TK_PARENTHESIS_CLOSE) }, assign_closure_end);
 						} else {
-							insert_after({ TT::TK_PARENTHESIS_CLOSE }, cur_tok);
+							insert_after(mkTok(TT::TK_PARENTHESIS_CLOSE), cur_tok);
 						}
 						insert_before(pending_closures, cur_tok);
 					} else if (renames.has(cur_tok->get().text)) {
-						replace_curr({ TT::TK_IDENTIFIER, renames[cur_tok->get().text] });
+						replace_curr(mkTok(TT::TK_IDENTIFIER, renames[cur_tok->get().text]));
 					} else if (hint_renames.has(cur_tok->get().text)) {
 						replace_curr(hint_renames[cur_tok->get().text]);
 					}
