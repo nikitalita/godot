@@ -124,6 +124,7 @@ class TextShaderEditor : public MarginContainer {
 		EDIT_TOGGLE_WORD_WRAP,
 		EDIT_TOGGLE_COMMENT,
 		EDIT_COMPLETE,
+		EDIT_CONVERT,
 		SEARCH_FIND,
 		SEARCH_FIND_NEXT,
 		SEARCH_FIND_PREV,
@@ -147,6 +148,8 @@ class TextShaderEditor : public MarginContainer {
 	GotoLineDialog *goto_line_dialog = nullptr;
 	ConfirmationDialog *erase_tab_confirm = nullptr;
 	ConfirmationDialog *disk_changed = nullptr;
+	AcceptDialog *shader_convert_error_dialog = nullptr;
+	ConfirmationDialog *confirm_convert_shader = nullptr;
 
 	ShaderTextEditor *shader_editor = nullptr;
 	bool compilation_success = true;
@@ -155,6 +158,7 @@ class TextShaderEditor : public MarginContainer {
 	mutable Ref<Shader> shader;
 	mutable Ref<ShaderInclude> shader_inc;
 
+	void _convert_shader();
 	void _editor_settings_changed();
 	void _project_settings_changed();
 

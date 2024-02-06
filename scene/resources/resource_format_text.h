@@ -56,6 +56,8 @@ class ResourceLoaderText {
 	bool is_scene = false;
 	String res_type;
 
+	int format_version = 0;
+
 	bool ignore_resource_parsing = false;
 
 	HashMap<String, ExtResource> ext_resources;

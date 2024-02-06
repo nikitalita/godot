@@ -295,6 +295,7 @@ protected:
 	void _clear_playing_caches();
 	void _init_root_motion_cache();
 	bool _update_caches();
+	bool _recalc_animation(Ref<Animation> &p_anim);
 
 	/* ---- Blending processor ---- */
 	LocalVector<AnimationInstance> animation_instances;

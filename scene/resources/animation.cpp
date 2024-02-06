@@ -32,7 +32,13 @@
 
 #include "core/io/marshalls.h"
 #include "core/math/geometry_3d.h"
+#include "core/variant/array.h"
+#include "core/variant/dictionary.h"
 #include "scene/scene_string_names.h"
+
+#define _LOAD_META_PROPERTY "_load"
+#define _TRANSFORM_TRACK_LIST_META_PROPERTY "_transform_track_list"
+#define _TRANSFORM_TRACK_DATA_META_PROPERTY(track_idx) "_transform_track_data__" + String::num(track_idx)
 
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 	String prop_name = p_name;
@@ -89,11 +95,43 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 			} else if (type == "animation") {
 				add_track(TYPE_ANIMATION);
 			} else {
+#ifndef DISABLE_DEPRECATED
+				// for compatibility with 3.x animations
+				if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do compatiblity conversions if we are loading a resource.
+					if (type == "transform") {
+						WARN_DEPRECATED_MSG("Animation uses old 'transform' track types, which is deprecated (and loads slower). Consider re-importing or re-saving the reosurce.");
+						PackedInt32Array track_list = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
+						track_list.push_back(track);
+						set_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, track_list);
+						Dictionary track_data;
+						track_data["type"] = "transform";
+						set_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track), track_data);
+						// Add an empty track that will get replaced after we are finished loading, so we don't throw off the track indices.
+						add_track(TYPE_ANIMATION, track);
+						return true;
+					}
+				}
+#endif // DISABLE_DEPRECATED
 				return false;
 			}
 
 			return true;
 		}
+
+#ifndef DISABLE_DEPRECATED
+		// If we have a transform track, we need to store the data in the metadata to be able to convert it to the new format after the load is finished.
+		if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do this on resource loads, not on editor changes
+			// check the metadata to see if this track is a transform track that we are holding on to
+			PackedInt32Array transform_tracks = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
+			if (transform_tracks.has(track)) {
+				// get the track data
+				Dictionary track_data = get_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track), Dictionary());
+				track_data[what] = p_value;
+				set_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track), track_data);
+				return true;
+			}
+		}
+#endif // DISABLE_DEPRECATED
 
 		ERR_FAIL_INDEX_V(track, tracks.size(), false);
 
@@ -5017,6 +5055,143 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 
 	print_line("Original size: " + itos(orig_size) + " - Compressed size: " + itos(new_size) + " " + String::num(float(new_size) / float(orig_size) * 100, 2) + "% pages: " + itos(compression.pages.size()));
 #endif
+}
+
+void Animation::_start_load(int p_res_format_version, bool p_binary) {
+#ifndef DISABLE_DEPRECATED
+	set_meta(_LOAD_META_PROPERTY, true);
+#endif
+}
+
+void Animation::_finish_load(int p_res_format_version, bool p_binary) {
+#ifndef DISABLE_DEPRECATED // 3.x compatiblity, convert transform tracks to separate tracks
+	if (!get_meta(_LOAD_META_PROPERTY, false)) {
+		WARN_PRINT("SOMEHOW CALLED FINISH LOAD WITHOUT START LOAD");
+	}
+	set_meta(_LOAD_META_PROPERTY, Variant());
+	PackedInt32Array transform_track_list = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
+	set_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, Variant());
+	if (transform_track_list.is_empty()) {
+		return;
+	}
+	set_meta("_requires_recalc", true); // scene importer will recalc
+	int offset = 0;
+	for (int track_idx : transform_track_list) {
+		// now that we have all the tracks, we need to split the transform tracks into separate tracks
+		// this is because the current animation player doesn't support transform tracks
+		// so we need to split them into separate position, rotation, and scale tracks
+		// No need to worry about compression here; this was added in 4.x and wasn't backported to 3.x.
+		Dictionary track_data = get_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track_idx), Dictionary());
+		if (track_data.is_empty()) {
+			WARN_PRINT("Failed to convert animation: invalid transform track " + itos(track_idx) + ".");
+			continue;
+		}
+		// split the transform track into separate tracks
+
+		// Old scene format only used 32-bit floats, did not have configurable real_t.
+		Vector<float> keys = track_data["keys"];
+		int vcount = keys.size();
+		int tcount = vcount / 12;
+		ERR_FAIL_COND_MSG((vcount % 12) != 0, "Failed to convert transform track: invalid number of key frames.");
+
+		Vector<real_t> position_keys;
+		Vector<real_t> rotation_keys;
+		Vector<real_t> scale_keys;
+		position_keys.resize(tcount * 5); // time + transition + xyz
+		rotation_keys.resize(tcount * 6); // time + transition + xyzw
+		scale_keys.resize(tcount * 5); // time + transition + xyz
+		// split the keys into separate tracks
+		bool has_position_transforms = false;
+		bool has_rotation_transforms = false;
+		bool has_scale_transforms = false;
+		for (int j = 0; j < tcount; j++) {
+			// it's position (Vector3, xyz), then rotation (Quaternion, xyzw), then scale (Vector3, xyz)
+			// each track has time and transition values, so get those
+			const float *ofs = &(keys.ptr()[j * 12]);
+			float time = ofs[0];
+			float transition = ofs[1];
+
+			position_keys.write[j * 5 + 0] = time;
+			position_keys.write[j * 5 + 1] = transition;
+			position_keys.write[j * 5 + 2] = ofs[2]; // x
+			position_keys.write[j * 5 + 3] = ofs[3]; // y
+			position_keys.write[j * 5 + 4] = ofs[4]; // z
+			// position default is 0,0,0
+			// if (!has_position_transforms && (0 != ofs[2] || 0 != ofs[3] || 0 != ofs[4])) {
+			// 	has_position_transforms = true;
+			// }
+
+			rotation_keys.write[j * 6 + 0] = time;
+			rotation_keys.write[j * 6 + 1] = transition;
+			rotation_keys.write[j * 6 + 2] = ofs[5]; // x
+			rotation_keys.write[j * 6 + 3] = ofs[6]; // y
+			rotation_keys.write[j * 6 + 4] = ofs[7]; // z
+			rotation_keys.write[j * 6 + 5] = ofs[8]; // w
+			// rotation default is 0,0,0,1
+			// if (!has_rotation_transforms && (0 != ofs[5] || 0 != ofs[6] || 0 != ofs[7] || 1.0 != ofs[8])) {
+			// 	has_rotation_transforms = true;
+			// }
+
+			scale_keys.write[j * 5 + 0] = time;
+			scale_keys.write[j * 5 + 1] = transition;
+			scale_keys.write[j * 5 + 2] = ofs[9]; // x
+			scale_keys.write[j * 5 + 3] = ofs[10]; // y
+			scale_keys.write[j * 5 + 4] = ofs[11]; // z
+			// scale default is 1,1,1
+			// if (!has_scale_transforms && (ofs[9] != 1.0 || ofs[10] != 1.0 || ofs[11] != 1.0)) {
+			// 	has_scale_transforms = true;
+			// }
+		}
+		// TODO: remobe this
+		has_position_transforms = true;
+		has_rotation_transforms = true;
+		has_scale_transforms = true;
+		Array c_track_keys = track_data.keys();
+		c_track_keys.erase("type");
+		c_track_keys.erase("keys");
+		remove_track(track_idx + offset); // remove dummy track
+		// We only add new tracks if the keys for the new scale, rotation, and position tracks are not just the default values
+		if (!has_position_transforms && !has_rotation_transforms && !has_scale_transforms) {
+			// if this is a transform track with no actual transforms, just add the position track
+			has_position_transforms = true;
+		}
+		if (has_position_transforms) {
+			add_track(TYPE_POSITION_3D, track_idx + offset);
+			for (int j = 0; j < c_track_keys.size(); j++) {
+				String key = c_track_keys[j];
+				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
+			}
+			_set("tracks/" + itos(track_idx + offset) + "/keys", position_keys);
+			track_set_imported(track_idx + offset, true);
+			offset++;
+		}
+		if (has_rotation_transforms) {
+			add_track(TYPE_ROTATION_3D, track_idx + offset);
+			for (int j = 0; j < c_track_keys.size(); j++) {
+				String key = c_track_keys[j];
+				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
+			}
+			_set("tracks/" + itos(track_idx + offset) + "/keys", rotation_keys);
+			track_set_imported(track_idx + offset, true);
+			offset++;
+		}
+		if (has_scale_transforms) {
+			add_track(TYPE_SCALE_3D, track_idx + offset);
+			for (int j = 0; j < c_track_keys.size(); j++) {
+				String key = c_track_keys[j];
+				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
+			}
+			_set("tracks/" + itos(track_idx + offset) + "/keys", scale_keys);
+			track_set_imported(track_idx + offset, true);
+			offset++;
+		}
+		offset--; // subtract 1 because we removed the dummy track
+		// erase the track data
+		set_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track_idx), Variant());
+	}
+	// erase the track list
+	set_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, Variant());
+#endif // DISABLE_DEPRECATED
 }
 
 bool Animation::_rotation_interpolate_compressed(uint32_t p_compressed_track, double p_time, Quaternion &r_ret) const {
