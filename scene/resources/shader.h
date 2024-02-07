@@ -88,6 +88,9 @@ public:
 
 	virtual RID get_rid() const override;
 
+	virtual void _start_load(int p_res_format_version, bool binary) override;
+	virtual void _finish_load(int p_res_format_version, bool p_binary) override;
+
 	Shader();
 	~Shader();
 };
