@@ -5138,13 +5138,13 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 #endif
 }
 
-void Animation::_start_load(int p_res_format_version, bool p_binary) {
+void Animation::_start_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED
 	set_meta(_LOAD_META_PROPERTY, true);
 #endif
 }
 
-void Animation::_finish_load(int p_res_format_version, bool p_binary) {
+void Animation::_finish_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED // 3.x compatiblity, convert transform tracks to separate tracks
 	if (!has_meta(_LOAD_META_PROPERTY)) {
 		return;

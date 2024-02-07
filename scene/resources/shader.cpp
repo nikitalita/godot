@@ -248,15 +248,15 @@ Array Shader::_get_shader_uniform_list(bool p_get_groups) {
 	return ret;
 }
 
-void Shader::_start_load(int p_res_format_version, bool p_binary) {
+void Shader::_start_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED
-	if ((p_binary && p_res_format_version == 3) || (!p_binary && p_res_format_version == 2)) {
+	if ((p_res_format_type == "binary" && p_res_format_version == 3) || (p_res_format_type == "text" && p_res_format_version == 2)) {
 		set_meta(_LOAD_COMPAT_META_PROPERTY, true);
 	}
 #endif
 }
 
-void Shader::_finish_load(int p_res_format_version, bool p_binary) {
+void Shader::_finish_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED
 	set_meta(_LOAD_COMPAT_META_PROPERTY, Variant());
 #endif

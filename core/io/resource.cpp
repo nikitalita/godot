@@ -505,9 +505,9 @@ String Resource::get_id_for_path(const String &p_path) const {
 }
 #endif
 
-void Resource::_start_load(int p_res_format_version, bool p_binary) {}
+void Resource::_start_load(const StringName &p_res_format_type, int p_res_format_version) {}
 
-void Resource::_finish_load(int p_res_format_version, bool p_binary) {}
+void Resource::_finish_load(const StringName &p_res_format_type, int p_res_format_version) {}
 
 void Resource::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_path", "path"), &Resource::_set_path);
