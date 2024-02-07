@@ -148,8 +148,8 @@ public:
 	String get_id_for_path(const String &p_path) const;
 #endif
 
-	virtual void _start_load(int p_res_format_version, bool binary = false);
-	virtual void _finish_load(int p_res_format_version, bool binary = false);
+	virtual void _start_load(int p_res_format_version, bool p_binary = false);
+	virtual void _finish_load(int p_res_format_version, bool p_binary = false);
 
 	Resource();
 	~Resource();

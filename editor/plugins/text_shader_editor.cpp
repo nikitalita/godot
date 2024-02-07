@@ -787,6 +787,7 @@ void TextShaderEditor::_convert_shader() {
 	shader_editor->_validate_script();
 }
 #endif
+
 void TextShaderEditor::_editor_settings_changed() {
 	shader_editor->update_editor_settings();
 

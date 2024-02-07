@@ -211,7 +211,7 @@ String ShaderDeprecatedConverter::get_builtin_rename(const String &p_name) {
 			return renamed_builtins[i].replacement;
 		}
 	}
-	return {};
+	return String();
 }
 
 bool ShaderDeprecatedConverter::has_builtin_rename(RS::ShaderMode p_mode, const String &p_name, const String &p_function) {
@@ -249,7 +249,7 @@ Vector<SL::TokenType> ShaderDeprecatedConverter::get_removed_builtin_hints(const
 			return removed_builtins[i].hints;
 		}
 	}
-	return {};
+	return Vector<SL::TokenType>();
 }
 
 bool ShaderDeprecatedConverter::_rename_has_special_handling(const String &p_name) {
@@ -415,7 +415,7 @@ String ShaderDeprecatedConverter::get_renamed_function(const String &p_name) {
 			return renamed_functions[i].replacement;
 		}
 	}
-	return {};
+	return String();
 }
 
 bool ShaderDeprecatedConverter::has_removed_render_mode(RS::ShaderMode p_mode, const String &p_name) {
@@ -609,7 +609,7 @@ bool ShaderDeprecatedConverter::token_is_skippable(const Token &tk) {
 			break;
 	}
 	return false;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::_get_next_token_ptr(List<Token>::Element *_curr_ptr) const {
 	ERR_FAIL_COND_V(_curr_ptr == nullptr, _curr_ptr);
@@ -624,7 +624,7 @@ List<SL::Token>::Element *ShaderDeprecatedConverter::_get_next_token_ptr(List<To
 		_curr_ptr = _curr_ptr->next();
 	}
 	return _curr_ptr;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::_get_prev_token_ptr(List<Token>::Element *_curr_ptr) const {
 	ERR_FAIL_COND_V(_curr_ptr == nullptr, _curr_ptr);
@@ -639,17 +639,17 @@ List<SL::Token>::Element *ShaderDeprecatedConverter::_get_prev_token_ptr(List<To
 		_curr_ptr = _curr_ptr->prev();
 	}
 	return _curr_ptr;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::get_next_token() {
 	curr_ptr = _get_next_token_ptr(curr_ptr);
 	return curr_ptr;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::get_prev_token() {
 	curr_ptr = _get_prev_token_ptr(curr_ptr);
 	return curr_ptr;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::remove_cur_and_get_next() {
 	ERR_FAIL_COND_V(!curr_ptr, nullptr);
@@ -668,7 +668,7 @@ List<SL::Token>::Element *ShaderDeprecatedConverter::remove_cur_and_get_next() {
 	code_tokens.erase(curr_ptr);
 	curr_ptr = prev;
 	return get_next_token();
-};
+}
 
 SL::TokenType ShaderDeprecatedConverter::_peek_tk_type(int64_t count, List<Token>::Element **r_pos) const {
 	ERR_FAIL_COND_V(!curr_ptr, ShaderLanguage::TK_EOF);
@@ -706,22 +706,22 @@ bool ShaderDeprecatedConverter::scope_has_decl(const String &p_scope, const Stri
 
 SL::TokenType ShaderDeprecatedConverter::peek_next_tk_type(uint32_t count) const {
 	return _peek_tk_type(count);
-};
+}
 
 SL::TokenType ShaderDeprecatedConverter::peek_prev_tk_type(uint32_t count) const {
 	return _peek_tk_type(-((int64_t)count));
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::get_pos() const {
 	ERR_FAIL_COND_V(!curr_ptr, nullptr);
 	return curr_ptr;
-};
+}
 
 bool ShaderDeprecatedConverter::reset_to(List<Token>::Element *p_pos) {
 	ERR_FAIL_COND_V(p_pos == nullptr, false);
 	curr_ptr = p_pos;
 	return true;
-};
+}
 
 bool ShaderDeprecatedConverter::insert_after(const Vector<Token> &token_list, List<Token>::Element *p_pos) {
 	ERR_FAIL_COND_V(p_pos == nullptr, false);
@@ -730,7 +730,7 @@ bool ShaderDeprecatedConverter::insert_after(const Vector<Token> &token_list, Li
 		code_tokens.insert_after(p_pos, { tk.type, tk.text, tk.constant, tk.line, tk.length, NEW_IDENT });
 	}
 	return true;
-};
+}
 
 bool ShaderDeprecatedConverter::insert_before(const Vector<Token> &token_list, List<Token>::Element *p_pos) {
 	ERR_FAIL_COND_V(p_pos == nullptr, false);
@@ -738,7 +738,7 @@ bool ShaderDeprecatedConverter::insert_before(const Vector<Token> &token_list, L
 		code_tokens.insert_before(p_pos, { tk.type, tk.text, tk.constant, tk.line, tk.length, NEW_IDENT });
 	}
 	return true;
-};
+}
 
 bool ShaderDeprecatedConverter::insert_after(const Token &token, List<Token>::Element *p_pos) {
 	ERR_FAIL_COND_V(p_pos == nullptr, false);
@@ -746,7 +746,7 @@ bool ShaderDeprecatedConverter::insert_after(const Token &token, List<Token>::El
 	new_token.pos = NEW_IDENT;
 	code_tokens.insert_after(p_pos, new_token);
 	return true;
-};
+}
 
 bool ShaderDeprecatedConverter::insert_before(const Token &token, List<Token>::Element *p_pos) {
 	ERR_FAIL_COND_V(p_pos == nullptr, false);
@@ -754,7 +754,7 @@ bool ShaderDeprecatedConverter::insert_before(const Token &token, List<Token>::E
 	new_token.pos = NEW_IDENT;
 	code_tokens.insert_before(p_pos, new_token);
 	return true;
-};
+}
 
 List<SL::Token>::Element *ShaderDeprecatedConverter::replace_curr(const Token &token) {
 	ERR_FAIL_COND_V(curr_ptr == nullptr, nullptr);
@@ -764,11 +764,11 @@ List<SL::Token>::Element *ShaderDeprecatedConverter::replace_curr(const Token &t
 	curr_ptr = code_tokens.insert_before(curr_ptr, new_token);
 	code_tokens.erase(prev);
 	return curr_ptr;
-};
+}
 
 SL::Token ShaderDeprecatedConverter::mkTok(TokenType p_type, const StringName &p_text, double constant, uint16_t p_line) {
 	return { p_type, p_text, constant, p_line, 0, NEW_IDENT };
-};
+}
 
 bool ShaderDeprecatedConverter::_insert_uniform_declaration(const String &p_name) {
 	if (after_type_decl == nullptr) {
@@ -1111,34 +1111,33 @@ void ShaderDeprecatedConverter::reset() {
 	curr_ptr = code_tokens.front();
 }
 
-#define COND_MSG_FAIL(cond, msg) \
-	if (unlikely(cond)) {        \
-		err_str = msg;           \
-		return false;            \
+#define COND_MSG_FAIL(m_cond, m_msg) \
+	if (unlikely(m_cond)) {          \
+		err_str = m_msg;             \
+		return false;                \
 	}
-#define COND_LINE_MSG_FAIL(cond, line, msg) \
-	if (unlikely(cond)) {                   \
-		err_line = line + 1;                \
-		err_str = msg;                      \
-		return false;                       \
+#define COND_LINE_MSG_FAIL(m_cond, m_line, m_msg) \
+	if (unlikely(m_cond)) {                       \
+		err_line = m_line + 1;                    \
+		err_str = m_msg;                          \
+		return false;                             \
 	}
-#define LINE_MSG_FAIL(line, msg) \
-	err_line = line + 1;         \
-	err_str = msg;               \
+#define LINE_MSG_FAIL(m_line, m_msg) \
+	err_line = m_line + 1;           \
+	err_str = m_msg;                 \
 	return false;
-#define MSG_FAIL(msg)    \
-	err_line = line + 1; \
-	err_str = msg;       \
+#define MSG_FAIL(m_msg) \
+	err_str = m_msg;    \
 	return false;
-#define INSERT_FAIL(insert_ret)                          \
-	if (unlikely(!insert_ret)) {                         \
+#define INSERT_FAIL(m_insert_ret)                        \
+	if (unlikely(!m_insert_ret)) {                       \
 		err_str = "Internal error: Token insert failed"; \
 		return false;                                    \
 	}
 
-#define EOF_FAIL(tokE)                                            \
-	COND_MSG_FAIL(tokE == nullptr, RTR("Unexpected end of file")) \
-	COND_LINE_MSG_FAIL(tokE->get().type == TT::TK_EOF || tokE->get().type == TT::TK_ERROR, tokE->get().line, tokE->get().type == TT::TK_ERROR ? vformat(RTR("Parser Error (%s) ", tokE->get().text)) : RTR("Unexpected end of file"))
+#define EOF_FAIL(m_tok_E)                                             \
+	COND_MSG_FAIL(m_tok_E == nullptr, RTR("Unexpected end of file")); \
+	COND_LINE_MSG_FAIL(m_tok_E->get().type == TT::TK_EOF || m_tok_E->get().type == TT::TK_ERROR, m_tok_E->get().line, m_tok_E->get().type == TT::TK_ERROR ? vformat(RTR("Parser Error (%s) ", m_tok_E->get().text)) : RTR("Unexpected end of file"));
 
 bool ShaderDeprecatedConverter::_skip_struct() {
 	TokE *struct_name = get_next_token();
@@ -1200,7 +1199,7 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 	};
 	Vector<TokE *> uniform_type_poses;
 
-	auto first_pass_func = [&]() {
+	auto first_pass_func = [&]() -> bool {
 		while (true) {
 			auto cur_tok = get_next_token();
 			if (cur_tok->get().type == TT::TK_EOF) {
@@ -1223,8 +1222,9 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 					EOF_FAIL(next_tk);
 					if (next_tk->get().type == TT::TK_BRACKET_OPEN) {
 						uni.is_array = true;
-						if (!skip_array_size())
+						if (!skip_array_size()) {
 							return false;
+						}
 						next_tk = get_pos();
 					}
 					COND_LINE_MSG_FAIL(!tokentype_is_identifier(next_tk->get().type), next_tk->get().line, RTR("Expected identifier after uniform type"));
@@ -1234,8 +1234,9 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 					EOF_FAIL(next_tk);
 					if (next_tk->get().type == TT::TK_BRACKET_OPEN) {
 						uni.is_array = true;
-						if (!skip_array_size())
+						if (!skip_array_size()) {
 							return false;
+						}
 						next_tk = get_pos();
 					}
 					if (next_tk->get().type == TT::TK_COLON) {
@@ -1292,8 +1293,9 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 			if (next_tk->get().type == TT::TK_BRACKET_OPEN) {
 				var.is_array = true;
 				var.new_arr_style_decl = true;
-				if (!skip_array_size())
+				if (!skip_array_size()) {
 					return false;
+				}
 				next_tk = get_pos();
 			}
 			COND_LINE_MSG_FAIL(!tokentype_is_identifier(next_tk->get().type), next_tk->get().line, RTR("Expected identifier after type in declaration"));
@@ -1304,8 +1306,9 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 			TokE *end_pos = next_tk;
 			if (next_tk->get().type == TT::TK_BRACKET_OPEN) {
 				var.is_array = true;
-				if (!skip_array_size())
+				if (!skip_array_size()) {
 					return false;
+				}
 				end_pos = get_pos();
 				next_tk = end_pos;
 			}
@@ -1370,8 +1373,9 @@ bool ShaderDeprecatedConverter::preprocess_code() {
 		TokE *next_tk = get_pos(); // id or array size
 		if (next_tk->get().type == TT::TK_BRACKET_OPEN) {
 			func.has_array_return_type = true;
-			if (!skip_array_size())
+			if (!skip_array_size()) {
 				return false;
+			}
 			next_tk = get_pos();
 		}
 		func.name_pos = next_tk; // id
@@ -1693,7 +1697,6 @@ bool ShaderDeprecatedConverter::is_code_deprecated() {
 	}
 
 	bool is_3x = false;
-	bool should_break = false;
 	String curr_func = "<global>";
 	reset_to(after_type_decl);
 	// check token stream for positive cases
@@ -2225,7 +2228,7 @@ void ShaderDeprecatedConverter::set_assume_correct(bool p_strict_preproc) {
 }
 
 ShaderDeprecatedConverter::ShaderDeprecatedConverter(const String &p_code) :
-		old_code(p_code) {
+		shader_mode(RS::SHADER_MAX), old_code(p_code) {
 }
 
 #endif // DISABLE_DEPRECATED

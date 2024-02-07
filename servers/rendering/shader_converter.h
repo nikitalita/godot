@@ -55,16 +55,16 @@ public:
 	void set_fail_on_unported(bool p_fail_on_unported);
 	void set_assume_correct(bool p_assume_correct);
 
-	static bool token_is_skippable(const Token &tk);
-	static bool tokentype_is_new_reserved_keyword(const TokenType &tk_type);
-	static bool tokentype_is_identifier(const TokenType &tk_type);
-	static bool tokentype_is_new_type(const TokenType &tk_type);
-	static bool token_is_type(const Token &tk);
-	static bool token_is_hint(const Token &tk);
-	static bool tokentype_is_new_hint(const TokenType &tk);
-	static bool token_is_new_builtin_func(const Token &tk);
+	static bool token_is_skippable(const Token &p_tk);
+	static bool tokentype_is_new_reserved_keyword(const TokenType &p_tk_type);
+	static bool tokentype_is_identifier(const TokenType &p_tk_type);
+	static bool tokentype_is_new_type(const TokenType &p_tk_type);
+	static bool token_is_type(const Token &p_tk);
+	static bool token_is_hint(const Token &p_tk);
+	static bool tokentype_is_new_hint(const TokenType &p_tk);
+	static bool token_is_new_builtin_func(const Token &p_tk);
 
-	static String get_tokentype_text(TokenType tk_type);
+	static String get_tokentype_text(TokenType p_tk_type);
 
 	static bool has_builtin_rename(RS::ShaderMode p_mode, const String &p_name, const String &p_function = "");
 	static String get_builtin_rename(const String &p_name);
@@ -140,18 +140,18 @@ public:
 
 private:
 	struct UniformDecl {
-		List<Token>::Element *start_pos;
-		List<Token>::Element *end_pos;
-		List<Token>::Element *type_pos;
-		List<Token>::Element *name_pos;
+		List<Token>::Element *start_pos = nullptr;
+		List<Token>::Element *end_pos = nullptr;
+		List<Token>::Element *type_pos = nullptr;
+		List<Token>::Element *name_pos = nullptr;
 		Vector<List<Token>::Element *> hint_poses;
 		bool is_array = false;
 	};
 	struct VarDecl {
-		List<Token>::Element *start_pos; // Varying token, const token, type token, or identifier if compound declaration (e.g. 'vec3 a, b;')
-		List<Token>::Element *end_pos; // semicolon or comma or right paren
-		List<Token>::Element *type_pos;
-		List<Token>::Element *name_pos;
+		List<Token>::Element *start_pos = nullptr; // Varying token, const token, type token, or identifier if compound declaration (e.g. 'vec3 a, b;')
+		List<Token>::Element *end_pos = nullptr; // semicolon or comma or right paren
+		List<Token>::Element *type_pos = nullptr;
+		List<Token>::Element *name_pos = nullptr;
 		bool is_array = false;
 		bool new_arr_style_decl = false;
 		bool is_func_arg = false;
@@ -164,13 +164,13 @@ private:
 	};
 
 	struct FunctionDecl {
-		List<Token>::Element *start_pos; // type or const
-		List<Token>::Element *type_pos;
-		List<Token>::Element *name_pos;
-		List<Token>::Element *args_start_pos; // left paren
-		List<Token>::Element *args_end_pos; // right paren
-		List<Token>::Element *body_start_pos; // left curly
-		List<Token>::Element *body_end_pos; // right curly - end of function
+		List<Token>::Element *start_pos = nullptr; // type or const
+		List<Token>::Element *type_pos = nullptr;
+		List<Token>::Element *name_pos = nullptr;
+		List<Token>::Element *args_start_pos = nullptr; // left paren
+		List<Token>::Element *args_end_pos = nullptr; // right paren
+		List<Token>::Element *body_start_pos = nullptr; // left curly
+		List<Token>::Element *body_end_pos = nullptr; // right curly - end of function
 		bool has_array_return_type = false;
 		void clear() {
 			type_pos = nullptr;
@@ -190,8 +190,8 @@ private:
 	static const char *removed_types[];
 
 	List<Token> code_tokens;
-	List<Token>::Element *curr_ptr;
-	List<Token>::Element *after_type_decl;
+	List<Token>::Element *curr_ptr = nullptr;
+	List<Token>::Element *after_type_decl = nullptr;
 	HashMap<String, UniformDecl> uniform_decls;
 	HashMap<String, Vector<VarDecl>> var_decls;
 	HashMap<String, FunctionDecl> function_decls;
@@ -209,7 +209,7 @@ private:
 	Token eof_token{ ShaderLanguage::TK_EOF, {}, 0, 0, 0, 0 };
 	static RS::ShaderMode get_shader_mode_from_string(const String &p_mode);
 
-	String get_token_literal_text(const Token &tk) const;
+	String get_token_literal_text(const Token &p_tk) const;
 	static Token mkTok(TokenType p_type, const StringName &p_text = StringName(), double constant = 0, uint16_t p_line = 0);
 
 	void reset();
@@ -217,21 +217,22 @@ private:
 	List<Token>::Element *get_next_token();
 	List<Token>::Element *get_prev_token();
 	List<Token>::Element *remove_cur_and_get_next();
-	TokenType peek_next_tk_type(uint32_t count = 1) const;
-	TokenType peek_prev_tk_type(uint32_t count = 1) const;
+	TokenType peek_next_tk_type(uint32_t p_count = 1) const;
+	TokenType peek_prev_tk_type(uint32_t p_count = 1) const;
 	List<Token>::Element *get_pos() const;
 	bool reset_to(List<Token>::Element *p_pos);
-	bool insert_after(const Vector<Token> &token_list, List<Token>::Element *p_pos);
-	bool insert_before(const Vector<Token> &token_list, List<Token>::Element *p_pos);
-	bool insert_after(const Token &token, List<Token>::Element *p_pos);
-	bool insert_before(const Token &token, List<Token>::Element *p_pos);
-	List<Token>::Element *replace_curr(const Token &token);
-	List<Token>::Element *_get_next_token_ptr(List<Token>::Element *_curr_ptr) const;
-	List<Token>::Element *_get_prev_token_ptr(List<Token>::Element *_curr_ptr) const;
-	TokenType _peek_tk_type(int64_t count, List<Token>::Element **r_pos = nullptr) const;
+	bool insert_after(const Vector<Token> &p_token_list, List<Token>::Element *p_pos);
+	bool insert_before(const Vector<Token> &p_token_list, List<Token>::Element *p_pos);
+	bool insert_after(const Token &p_token, List<Token>::Element *p_pos);
+	bool insert_before(const Token &p_token, List<Token>::Element *p_pos);
+	List<Token>::Element *replace_curr(const Token &p_token);
+	List<Token>::Element *_get_next_token_ptr(List<Token>::Element *p_curr_ptr) const;
+	List<Token>::Element *_get_prev_token_ptr(List<Token>::Element *p_curr_ptr) const;
+	TokenType _peek_tk_type(int64_t p_count, List<Token>::Element **r_pos = nullptr) const;
 
 	bool scope_has_decl(const String &p_scope, const String &p_name) const;
 
+	bool _skip_array_size();
 	bool _skip_struct();
 	bool _add_comment_before(const String &p_comment, List<Token>::Element *p_pos = nullptr);
 	bool _add_comment_at_eol(const String &p_comment, List<Token>::Element *p_pos = nullptr);

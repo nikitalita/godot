@@ -32,13 +32,11 @@
 
 #include "core/io/marshalls.h"
 #include "core/math/geometry_3d.h"
-#include "core/variant/array.h"
-#include "core/variant/dictionary.h"
 #include "scene/scene_string_names.h"
 
 #define _LOAD_META_PROPERTY "_load"
 #define _TRANSFORM_TRACK_LIST_META_PROPERTY "_transform_track_list"
-#define _TRANSFORM_TRACK_DATA_META_PROPERTY(track_idx) "_transform_track_data__" + String::num(track_idx)
+#define _TRANSFORM_TRACK_DATA_META_PROPERTY(m_track_idx) "_transform_track_data__" + String::num(m_track_idx)
 
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 	String prop_name = p_name;

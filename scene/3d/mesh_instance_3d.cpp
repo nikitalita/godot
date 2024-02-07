@@ -56,11 +56,12 @@ bool MeshInstance3D::_set(const StringName &p_name, const Variant &p_value) {
 		WARN_DEPRECATED_MSG("This mesh uses an old deprecated parameter name. Consider re-saving this scene in order for it to continue working in future versions." +
 				(is_inside_tree() ? vformat(" Path: \"%s\"", get_path()) : String()));
 	}
-	if (name.begins_with("surface_material_override/") || name.begins_with("material/"))
-#else
-	if (name.begins_with("surface_material_override/"))
 #endif
-	{
+	if (name.begins_with("surface_material_override/")
+#ifndef DISABLE_DEPRECATED
+			|| name.begins_with("material/")
+#endif
+	) {
 		int idx = name.get_slicec('/', 1).to_int();
 
 		if (idx >= surface_override_materials.size() || idx < 0) {
