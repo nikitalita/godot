@@ -99,7 +99,7 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 				// for compatibility with 3.x animations
 				if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do compatiblity conversions if we are loading a resource.
 					if (type == "transform") {
-						WARN_DEPRECATED_MSG("Animation uses old 'transform' track types, which is deprecated (and loads slower). Consider re-importing or re-saving the reosurce.");
+						WARN_DEPRECATED_MSG("Animation uses old 'transform' track types, which is deprecated (and loads slower). Consider re-importing or re-saving the resource.");
 						PackedInt32Array track_list = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
 						track_list.push_back(track);
 						set_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, track_list);
@@ -118,7 +118,30 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 			return true;
 		}
 
+		ERR_FAIL_INDEX_V(track, tracks.size(), false);
+
 #ifndef DISABLE_DEPRECATED
+		if (what == "relative_to_rest") {
+			Track *t = tracks[track];
+			switch (t->type) {
+				case TYPE_POSITION_3D: {
+					PositionTrack *tt = static_cast<PositionTrack *>(t);
+					tt->relative_to_rest = p_value;
+				} break;
+				case TYPE_ROTATION_3D: {
+					RotationTrack *rt = static_cast<RotationTrack *>(t);
+					rt->relative_to_rest = p_value;
+				} break;
+				case TYPE_SCALE_3D: {
+					ScaleTrack *st = static_cast<ScaleTrack *>(t);
+					st->relative_to_rest = p_value;
+				} break;
+				default: {
+					return false;
+				}
+			}
+			return true;
+		}
 		// If we have a transform track, we need to store the data in the metadata to be able to convert it to the new format after the load is finished.
 		if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do this on resource loads, not on editor changes
 			// check the metadata to see if this track is a transform track that we are holding on to
@@ -132,8 +155,6 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 			}
 		}
 #endif // DISABLE_DEPRECATED
-
-		ERR_FAIL_INDEX_V(track, tracks.size(), false);
 
 		if (what == "path") {
 			track_set_path(track, p_value);
@@ -883,6 +904,11 @@ void Animation::_get_property_list(List<PropertyInfo> *p_list) const {
 			p_list->push_back(PropertyInfo(Variant::INT, "tracks/" + itos(i) + "/interp", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
 			p_list->push_back(PropertyInfo(Variant::BOOL, "tracks/" + itos(i) + "/loop_wrap", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
 			p_list->push_back(PropertyInfo(Variant::ARRAY, "tracks/" + itos(i) + "/keys", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
+#ifndef DISABLE_DEPRECATED
+			if (track_is_relative_to_rest(i)) {
+				p_list->push_back(PropertyInfo(Variant::ARRAY, "tracks/" + itos(i) + "/relative_to_rest", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
+			}
+#endif // DISABLE_DEPRECATED
 		}
 		if (track_get_type(i) == TYPE_AUDIO) {
 			p_list->push_back(PropertyInfo(Variant::BOOL, "tracks/" + itos(i) + "/use_blend", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL));
@@ -1108,6 +1134,63 @@ void Animation::_clear(T &p_keys) {
 }
 
 ////
+#ifndef DISABLE_DEPRECATED
+bool Animation::has_tracks_relative_to_rest() const {
+	for (int i = 0; i < tracks.size(); i++) {
+		if (track_is_relative_to_rest(i)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Animation::track_is_relative_to_rest(int p_track) const {
+	ERR_FAIL_INDEX_V(p_track, tracks.size(), false);
+	Track *t = tracks[p_track];
+
+	switch (t->type) {
+		case TYPE_POSITION_3D: {
+			PositionTrack *tt = static_cast<PositionTrack *>(t);
+			return tt->relative_to_rest;
+		} break;
+		case TYPE_ROTATION_3D: {
+			RotationTrack *rt = static_cast<RotationTrack *>(t);
+			return rt->relative_to_rest;
+		} break;
+		case TYPE_SCALE_3D: {
+			ScaleTrack *st = static_cast<ScaleTrack *>(t);
+			return st->relative_to_rest;
+		} break;
+		default: {
+			return false; // Animation does not really use transitions.
+		} break;
+	}
+}
+
+void Animation::track_set_relative_to_rest(int p_track, bool p_relative_to_rest) {
+	ERR_FAIL_INDEX(p_track, tracks.size());
+	Track *t = tracks[p_track];
+
+	switch (t->type) {
+		case TYPE_POSITION_3D: {
+			PositionTrack *tt = static_cast<PositionTrack *>(t);
+			tt->relative_to_rest = p_relative_to_rest;
+		} break;
+		case TYPE_ROTATION_3D: {
+			RotationTrack *rt = static_cast<RotationTrack *>(t);
+			rt->relative_to_rest = p_relative_to_rest;
+		} break;
+		case TYPE_SCALE_3D: {
+			ScaleTrack *st = static_cast<ScaleTrack *>(t);
+			st->relative_to_rest = p_relative_to_rest;
+		} break;
+		default: {
+			return; // Animation does not really use transitions.
+		} break;
+	}
+	emit_changed();
+}
+#endif // DISABLE_DEPRECATED
 
 int Animation::position_track_insert_key(int p_track, double p_time, const Vector3 &p_position) {
 	ERR_FAIL_INDEX_V(p_track, tracks.size(), -1);
@@ -5065,16 +5148,18 @@ void Animation::_start_load(int p_res_format_version, bool p_binary) {
 
 void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 #ifndef DISABLE_DEPRECATED // 3.x compatiblity, convert transform tracks to separate tracks
-	if (!get_meta(_LOAD_META_PROPERTY, false)) {
-		WARN_PRINT("SOMEHOW CALLED FINISH LOAD WITHOUT START LOAD");
+	if (!has_meta(_LOAD_META_PROPERTY)) {
+		return;
 	}
 	set_meta(_LOAD_META_PROPERTY, Variant());
+	if (!has_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY)) {
+		return;
+	}
 	PackedInt32Array transform_track_list = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
 	set_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, Variant());
 	if (transform_track_list.is_empty()) {
 		return;
 	}
-	set_meta("_requires_recalc", true); // scene importer will recalc
 	int offset = 0;
 	for (int track_idx : transform_track_list) {
 		// now that we have all the tracks, we need to split the transform tracks into separate tracks
@@ -5083,7 +5168,6 @@ void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 		// No need to worry about compression here; this was added in 4.x and wasn't backported to 3.x.
 		Dictionary track_data = get_meta(_TRANSFORM_TRACK_DATA_META_PROPERTY(track_idx), Dictionary());
 		if (track_data.is_empty()) {
-			WARN_PRINT("Failed to convert animation: invalid transform track " + itos(track_idx) + ".");
 			continue;
 		}
 		// split the transform track into separate tracks
@@ -5092,7 +5176,7 @@ void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 		Vector<float> keys = track_data["keys"];
 		int vcount = keys.size();
 		int tcount = vcount / 12;
-		ERR_FAIL_COND_MSG((vcount % 12) != 0, "Failed to convert transform track: invalid number of key frames.");
+		ERR_CONTINUE_MSG((vcount % 12) != 0, "Failed to convert transform track: invalid number of key frames.");
 
 		Vector<real_t> position_keys;
 		Vector<real_t> rotation_keys;
@@ -5162,7 +5246,7 @@ void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
 			}
 			_set("tracks/" + itos(track_idx + offset) + "/keys", position_keys);
-			track_set_imported(track_idx + offset, true);
+			_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
 			offset++;
 		}
 		if (has_rotation_transforms) {
@@ -5172,7 +5256,7 @@ void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
 			}
 			_set("tracks/" + itos(track_idx + offset) + "/keys", rotation_keys);
-			track_set_imported(track_idx + offset, true);
+			_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
 			offset++;
 		}
 		if (has_scale_transforms) {
@@ -5182,7 +5266,7 @@ void Animation::_finish_load(int p_res_format_version, bool p_binary) {
 				_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
 			}
 			_set("tracks/" + itos(track_idx + offset) + "/keys", scale_keys);
-			track_set_imported(track_idx + offset, true);
+			_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
 			offset++;
 		}
 		offset--; // subtract 1 because we removed the dummy track

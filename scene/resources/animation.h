@@ -135,6 +135,9 @@ private:
 	struct PositionTrack : public Track {
 		Vector<TKey<Vector3>> positions;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		PositionTrack() { type = TYPE_POSITION_3D; }
 	};
 
@@ -143,6 +146,9 @@ private:
 	struct RotationTrack : public Track {
 		Vector<TKey<Quaternion>> rotations;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		RotationTrack() { type = TYPE_ROTATION_3D; }
 	};
 
@@ -151,6 +157,9 @@ private:
 	struct ScaleTrack : public Track {
 		Vector<TKey<Vector3>> scales;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		ScaleTrack() { type = TYPE_SCALE_3D; }
 	};
 
@@ -159,7 +168,6 @@ private:
 	struct BlendShapeTrack : public Track {
 		Vector<TKey<float>> blend_shapes;
 		int32_t compressed_track = -1;
-		bool recalc_required = false;
 		BlendShapeTrack() { type = TYPE_BLEND_SHAPE; }
 	};
 	int i[sizeof(BlendShapeTrack)];
@@ -418,7 +426,11 @@ public:
 	double track_get_key_time(int p_track, int p_key_idx) const;
 	real_t track_get_key_transition(int p_track, int p_key_idx) const;
 	bool track_is_compressed(int p_track) const;
-
+#ifndef DISABLE_DEPRECATED
+	bool has_tracks_relative_to_rest() const;
+	bool track_is_relative_to_rest(int p_track) const;
+	void track_set_relative_to_rest(int p_track, bool p_relative_to_rest);
+#endif
 	int position_track_insert_key(int p_track, double p_time, const Vector3 &p_position);
 	Error position_track_get_key(int p_track, int p_key, Vector3 *r_position) const;
 	Error try_position_track_interpolate(int p_track, double p_time, Vector3 *r_interpolation) const;

@@ -324,6 +324,7 @@ bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 			continue;
 		}
 		anim->set("tracks/" + itos(i) + "/keys", new_track_values_map[i]);
+		anim->set("tracks/" + itos(i) + "/relative_to_rest", false);
 	}
 	anim->emit_changed();
 	return true;
@@ -1063,10 +1064,8 @@ void AnimationMixer::_blend_init() {
 		for (const StringName &E : sname) {
 			Ref<Animation> anim = get_animation(E);
 
-			if (anim->get_meta("_requires_recalc", false)) {
-				if (_recalc_animation(anim)) {
-					anim->set_meta("_requires_recalc", Variant());
-				}
+			if (anim->has_tracks_relative_to_rest()) {
+				_recalc_animation(anim);
 			}
 		}
 #endif
