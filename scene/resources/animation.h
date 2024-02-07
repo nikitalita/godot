@@ -159,8 +159,10 @@ private:
 	struct BlendShapeTrack : public Track {
 		Vector<TKey<float>> blend_shapes;
 		int32_t compressed_track = -1;
+		bool recalc_required = false;
 		BlendShapeTrack() { type = TYPE_BLEND_SHAPE; }
 	};
+	int i[sizeof(BlendShapeTrack)];
 
 	/* PROPERTY VALUE TRACK */
 
@@ -495,6 +497,9 @@ public:
 
 	void optimize(real_t p_allowed_velocity_err = 0.01, real_t p_allowed_angular_err = 0.01, int p_precision = 3);
 	void compress(uint32_t p_page_size = 8192, uint32_t p_fps = 120, float p_split_tolerance = 4.0); // 4.0 seems to be the split tolerance sweet spot from many tests
+
+	virtual void _start_load(int p_res_format_version, bool p_binary = false) override;
+	virtual void _finish_load(int p_res_format_version, bool p_binary = false) override;
 
 	// Helper functions for Variant.
 	static bool is_variant_interpolatable(const Variant p_value);
