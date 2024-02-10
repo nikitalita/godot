@@ -240,14 +240,10 @@ bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 	if (!parent) {
 		return false;
 	}
-	Vector3 def_pos;
-	Quaternion def_rot;
-	Vector3 def_scale = Vector3(1, 1, 1);
 
 	for (int i = 0; i < anim->get_track_count(); i++) {
 		int track_type = anim->track_get_type(i);
 		if (track_type == Animation::TYPE_POSITION_3D || track_type == Animation::TYPE_ROTATION_3D || track_type == Animation::TYPE_SCALE_3D) {
-			bool is_not_default = false;
 			NodePath path = anim->track_get_path(i);
 			Node *node = parent->get_node(path);
 			ERR_FAIL_COND_V(!node, false);
@@ -290,9 +286,6 @@ bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 					Transform3D t = Transform3D();
 					t.basis.rotate(q);
 					Quaternion new_q = (rest * t).basis.get_rotation_quaternion();
-					if (!is_not_default && new_q != def_rot) {
-						is_not_default = true;
-					}
 					real_t *ofs = &r[j * ROTATION_TRACK_SIZE];
 					ofs[0] = time;
 					ofs[1] = transition;
