@@ -422,7 +422,7 @@ TEST_CASE("[ShaderDeprecatedConverter] Built-in renames") {
 			}
 		}
 	}
-	SUBCASE("[ShaderDeprecatedConverter] No renaming built-ins in candidate functions with built-in declared") {
+	SUBCASE("No renaming built-ins in candidate functions with built-in declared") {
 		String code_template = "shader_type %s; void %s() { float %s = 1.0; %s += 1.0; }";
 		for (RS::ShaderMode mode : modes) {
 			for (const String &builtin : builtins) {

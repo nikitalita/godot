@@ -1882,9 +1882,9 @@ String ShaderDeprecatedConverter::get_error_text() const {
 
 bool ShaderDeprecatedConverter::_check_deprecated_type(TokE *p_type_pos) {
 	if (p_type_pos->get().type == TT::TK_IDENTIFIER && has_removed_type(get_token_literal_text(p_type_pos->get()))) {
-		const String err_msg = vformat(RTR("Deprecated type '%s' is not supported by this version of Godot."), get_token_literal_text(p_type_pos->get()));
-		COND_LINE_MSG_FAIL(fail_on_unported, p_type_pos->get().line, err_msg);
-		_add_warning_comment_before(err_msg, p_type_pos);
+		const String i_err_msg = vformat(RTR("Deprecated type '%s' is not supported by this version of Godot."), get_token_literal_text(p_type_pos->get()));
+		COND_LINE_MSG_FAIL(fail_on_unported, p_type_pos->get().line, i_err_msg);
+		_add_warning_comment_before(i_err_msg, p_type_pos);
 	}
 	return true;
 }
@@ -2151,9 +2151,9 @@ bool ShaderDeprecatedConverter::convert_code(const String &p_code) {
 							String id_text = get_token_literal_text(next_tk->get());
 							if (has_removed_render_mode(shader_mode, id_text)) {
 								if (!can_remove_render_mode(id_text)) {
-									const String err_msg = vformat(RTR("Deprecated render mode '%s' is not supported by this version of Godot."), id_text);
-									COND_LINE_MSG_FAIL(fail_on_unported, next_tk->get().line, err_msg);
-									_add_warning_comment_before(err_msg, next_tk);
+									const String i_err_msg = vformat(RTR("Deprecated render mode '%s' is not supported by this version of Godot."), id_text);
+									COND_LINE_MSG_FAIL(fail_on_unported, next_tk->get().line, i_err_msg);
+									_add_warning_comment_before(i_err_msg, next_tk);
 								} else {
 									if (peek_next_tk_type() == TT::TK_COMMA) {
 										TokE *comma = get_next_token();
@@ -2204,9 +2204,9 @@ bool ShaderDeprecatedConverter::convert_code(const String &p_code) {
 					cur_tok = replace_curr(mkTok(TT::TK_IDENTIFIER, nonfunc_globals_renames[cur_tok_text]));
 				} else if (is_removed_builtin(shader_mode, cur_tok_text, curr_func) && !scope_has_decl(curr_func, cur_tok_text)) {
 					if (get_removed_builtin_uniform_type(cur_tok_text) == TT::TK_ERROR) {
-						String err_str = vformat(RTR("Deprecated built-in '%s' is not supported by this version of Godot"), cur_tok_text);
-						COND_LINE_MSG_FAIL(fail_on_unported, cur_tok->get().line, err_str);
-						_add_warning_comment_before(err_str, cur_tok);
+						const String i_err_str = vformat(RTR("Deprecated built-in '%s' is not supported by this version of Godot"), cur_tok_text);
+						COND_LINE_MSG_FAIL(fail_on_unported, cur_tok->get().line, i_err_str);
+						_add_warning_comment_before(i_err_str, cur_tok);
 					}
 					COND_LINE_MSG_FAIL(!_insert_uniform_declaration(cur_tok_text), cur_tok->get().line, RTR("Failed to insert uniform declaration"));
 					UniformDecl &uniform_decl = uniform_decls[cur_tok_text];
