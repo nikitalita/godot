@@ -170,7 +170,6 @@ private:
 		int32_t compressed_track = -1;
 		BlendShapeTrack() { type = TYPE_BLEND_SHAPE; }
 	};
-	int i[sizeof(BlendShapeTrack)];
 
 	/* PROPERTY VALUE TRACK */
 
