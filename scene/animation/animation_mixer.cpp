@@ -234,6 +234,7 @@ TypedArray<StringName> AnimationMixer::_get_animation_library_list() const {
 	return ret;
 }
 
+#if !defined(_3D_DISABLED) || !defined(DISABLE_DEPRECATED)
 bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 	HashMap<int, Vector<real_t>> new_track_values_map;
 	Node *parent = get_node_or_null(root_node);
@@ -322,6 +323,7 @@ bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 	anim->emit_changed();
 	return true;
 }
+#endif // !defined(_3D_DISABLED) || !defined(DISABLE_DEPRECATED)
 
 void AnimationMixer::get_animation_library_list(List<StringName> *p_libraries) const {
 	for (const AnimationLibraryData &lib : animation_libraries) {
@@ -1049,8 +1051,7 @@ void AnimationMixer::_blend_init() {
 	root_motion_scale_accumulator = Vector3(1, 1, 1);
 
 	if (!cache_valid) {
-#ifndef _3D_DISABLED
-#ifndef DISABLE_DEPRECATED
+#if !defined(_3D_DISABLED) || !defined(DISABLE_DEPRECATED)
 		List<StringName> sname;
 		get_animation_list(&sname);
 
@@ -1061,7 +1062,6 @@ void AnimationMixer::_blend_init() {
 				_recalc_animation(anim);
 			}
 		}
-#endif
 #endif
 		if (!_update_caches()) {
 			return;

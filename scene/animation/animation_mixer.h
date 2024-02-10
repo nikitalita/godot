@@ -295,8 +295,9 @@ protected:
 	void _clear_playing_caches();
 	void _init_root_motion_cache();
 	bool _update_caches();
+#if !defined(_3D_DISABLED) || !defined(DISABLE_DEPRECATED)
 	bool _recalc_animation(Ref<Animation> &p_anim);
-
+#endif
 	/* ---- Blending processor ---- */
 	LocalVector<AnimationInstance> animation_instances;
 	HashMap<NodePath, int> track_map;
