@@ -1161,7 +1161,7 @@ void ShaderDeprecatedConverter::reset() {
 	var_decls.clear();
 	function_decls.clear();
 	scope_declarations.clear();
-
+	after_shader_decl = code_tokens.front();
 	curr_ptr = code_tokens.front();
 }
 
@@ -1586,8 +1586,7 @@ bool ShaderDeprecatedConverter::_parse_uniforms() {
 	return true;
 }
 
-bool ShaderDeprecatedConverter::preprocess_code() {
-	reset();
+bool ShaderDeprecatedConverter::_preprocess_code() {
 	COND_MSG_FAIL(code_tokens.size() == 0, RTR("Empty shader file"));
 	StringName mode_string;
 	{
@@ -1655,7 +1654,7 @@ bool ShaderDeprecatedConverter::is_code_deprecated(const String &p_code) {
 	if (_has_any_preprocessor_directives()) {
 		return false;
 	}
-	if (!preprocess_code()) {
+	if (!_preprocess_code()) {
 		return false;
 	}
 	return _is_code_deprecated();
@@ -1938,7 +1937,7 @@ bool ShaderDeprecatedConverter::convert_code(const String &p_code) {
 		err_str = RTR("Cannot convert new shader with pre-processor directives.");
 		return false;
 	}
-	if (!preprocess_code()) {
+	if (!_preprocess_code()) {
 		return false;
 	}
 	bool detected_3x = _is_code_deprecated(); // Calls preprocess_code().

@@ -235,7 +235,7 @@ private:
 	static bool token_is_hint(const Token &p_tk);
 
 	void reset();
-	bool preprocess_code();
+	bool _preprocess_code();
 	List<Token>::Element *get_next_token();
 	List<Token>::Element *get_prev_token();
 	List<Token>::Element *remove_cur_and_get_next();
