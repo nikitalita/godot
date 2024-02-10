@@ -32,10 +32,10 @@
 #define TEST_SHADER_CONVERTER_H
 
 #ifndef DISABLE_DEPRECATED
+#include "servers/rendering/rendering_server_default.h"
 #include "servers/rendering/shader_converter.h"
 #include "servers/rendering/shader_language.h"
 #include "servers/rendering/shader_types.h"
-
 #include "tests/test_macros.h"
 
 #include <cctype>
@@ -104,7 +104,7 @@ String compact_spaces(String &p_str) {
 #define CHECK_SHADER_EQ(a, b) CHECK_EQ(compact_spaces(a), compact_spaces(b))
 #define CHECK_SHADER_NE(a, b) CHECK_NE(compact_spaces(a), compact_spaces(b))
 
-void get_compile_info(ShaderLanguage::ShaderCompileInfo &info, RenderingServer::ShaderMode p_mode = RenderingServer::SHADER_SPATIAL) {
+void get_compile_info(ShaderLanguage::ShaderCompileInfo &info, RenderingServer::ShaderMode p_mode) {
 	info.functions = ShaderTypes::get_singleton()->get_functions(p_mode);
 	info.render_modes = ShaderTypes::get_singleton()->get_modes(p_mode);
 	info.shader_types = ShaderTypes::get_singleton()->get_types();
@@ -146,20 +146,90 @@ String get_shader_mode_name(const RenderingServer::ShaderMode &p_mode_string) {
 			return "unknown";
 	}
 }
+using SL = ShaderLanguage;
+using SDC = ShaderDeprecatedConverter;
 
-#define TEST_CONVERSION(old_code, expected, is_deprecated)       \
-	{                                                            \
-		ShaderDeprecatedConverter converter(old_code);           \
-		CHECK_EQ(converter.is_code_deprecated(), is_deprecated); \
-		CHECK_EQ(converter.convert_code(), true);                \
-		String new_code = converter.emit_code();                 \
-		CHECK_EQ(new_code, expected);                            \
+#define TEST_CONVERSION(m_old_code, m_expected, m_is_deprecated)                \
+	{                                                                           \
+		ShaderDeprecatedConverter _i_converter;                                 \
+		CHECK_EQ(_i_converter.is_code_deprecated(m_old_code), m_is_deprecated); \
+		CHECK(_i_converter.convert_code(m_old_code));                           \
+		String _i_new_code = _i_converter.emit_code();                          \
+		CHECK_EQ(_i_new_code, m_expected);                                      \
 	}
 
 TEST_CASE("[ShaderDeprecatedConverter] Simple conversion with arrays") {
 	String code = "shader_type particles; void vertex() { float xy[2] = {1.0,1.1}; }";
 	String expected = "shader_type particles; void process() { float xy[2] = {1.0,1.1}; }";
 	TEST_CONVERSION(code, expected, true);
+}
+
+TEST_CASE("[ShaderDeprecatedConverter] Test removed types") {
+	static const char *decl_test_template[]{
+		"shader_type spatial;\n%s foo() {}\n",
+		"shader_type spatial;\nvoid test_func() {%s foo;}\n",
+		"shader_type spatial;\nvarying %s foo;\n",
+		nullptr
+	};
+	Vector<String> shader_types_to_test = { "spatial", "canvas_item", "particles" };
+	List<String> removed_types;
+	ShaderDeprecatedConverter::_get_type_removals_list(&removed_types);
+	if (removed_types.is_empty()) {
+		WARN_PRINT("No removed types found, this test is not useful.");
+		return;
+	}
+	ShaderLanguage::ShaderCompileInfo info;
+	get_compile_info(info, RS::SHADER_SPATIAL);
+	SUBCASE("Code with removed types fail to compile") {
+		for (const String &removed_type : removed_types) {
+			for (int i = 0; decl_test_template[i] != nullptr; i++) {
+				String code = vformat(decl_test_template[i], removed_type);
+				ShaderLanguage sl;
+				CHECK_NE(sl.compile(code, info), Error::OK);
+			}
+		}
+	}
+	SUBCASE("Convert code with removed types: fail_on_unported=true") {
+		for (const String &removed_type : removed_types) {
+			for (int i = 0; decl_test_template[i] != nullptr; i++) {
+				String code = vformat(decl_test_template[i], removed_type);
+				ShaderDeprecatedConverter converter;
+				CHECK(converter.is_code_deprecated(code));
+				CHECK_FALSE(converter.convert_code(code));
+			}
+		}
+	}
+	SUBCASE("Convert code with removed types: fail_on_unported=false") {
+		for (const String &removed_type : removed_types) {
+			for (int i = 0; decl_test_template[i] != nullptr; i++) {
+				String code = vformat(decl_test_template[i], removed_type);
+				ShaderDeprecatedConverter converter;
+				CHECK(converter.is_code_deprecated(code));
+				converter.set_warning_comments(false);
+				converter.set_fail_on_unported(false);
+				CHECK(converter.convert_code(code));
+				String new_code = converter.emit_code();
+				CHECK_EQ(new_code, code);
+				converter.set_warning_comments(true);
+				new_code = converter.emit_code();
+				CHECK_NE(new_code, code);
+				CHECK(new_code.find("/* !convert WARNING:") != -1);
+			}
+		}
+	}
+}
+
+TEST_CASE("[ShaderDeprecatedConverter] Test warning comments") {
+	// Test that warning comments are added when fail_on_unported is false and warning_comments is true
+	String code = "shader_type spatial;\nrender_mode specular_phong;";
+	String expected = "shader_type spatial;\n/* !convert WARNING: Deprecated render mode 'specular_phong' is not supported by this version of Godot. */\nrender_mode specular_phong;";
+	ShaderDeprecatedConverter converter;
+	CHECK(converter.is_code_deprecated(code));
+	converter.set_warning_comments(true);
+	converter.set_fail_on_unported(false);
+	CHECK(converter.convert_code(code));
+	String new_code = converter.emit_code();
+	CHECK_EQ(new_code, expected);
 }
 
 TEST_CASE("[ShaderDeprecatedConverter] Simple conversion with arrays") {
@@ -169,7 +239,7 @@ TEST_CASE("[ShaderDeprecatedConverter] Simple conversion with arrays") {
 }
 
 TEST_CASE("[ShaderDeprecatedConverter] new-style array declaration") {
-	String code = "shader_type particles; void process() { float[2] xy = {1.0,1.1}; }";
+	String code = "shader_type spatial; void vertex() { float[2] xy = {1.0,1.1}; }";
 	// code should be the same
 	TEST_CONVERSION(code, code, false);
 }
@@ -192,19 +262,25 @@ TEST_CASE("[ShaderDeprecatedConverter] particles::vertex() -> particles::process
 		String expected = "shader_type particles; void process() { float x = 1.0; }";
 		TEST_CONVERSION(code, expected, true);
 	}
-	SUBCASE("with another function named `process`") {
-		String code = "shader_type particles; void vertex() {}  void process() {}";
-		String expected = "shader_type particles; void process() {}  void process_() {}";
+	SUBCASE("with another function named `process` without correct signature") {
+		String code = "shader_type particles; void vertex() {}  float process() { return 1.0; }";
+		String expected = "shader_type particles; void process() {}  float process_() { return 1.0; }";
 		TEST_CONVERSION(code, expected, true);
 	}
+	SUBCASE("with another function named `process` with correct signature") {
+		String code = "shader_type particles; void vertex() {}  void process() {}";
+		// Should be unchanged.
+		TEST_CONVERSION(code, code, false);
+	}
+
 	SUBCASE("with another function named `process` that is called") {
-		String code = "shader_type particles; void process() {} void vertex() { process(); }";
-		String expected = "shader_type particles; void process_() {} void process() { process_(); }";
+		String code = "shader_type particles; float process() { return 1.0; } void vertex() { float foo = process(); }";
+		String expected = "shader_type particles; float process_() { return 1.0; } void process() { float foo = process_(); }";
 		TEST_CONVERSION(code, expected, true);
 	}
 	SUBCASE("with another function named `process` which calls `vertex`") {
-		String code = "shader_type particles; void process() {vertex();} void vertex() {} void foo() { vertex(); }";
-		String expected = "shader_type particles; void process_() {process();} void process() {} void foo() { process(); }";
+		String code = "shader_type particles; float process() {foo(); return 1.0;} void vertex() {} void foo() { vertex(); }";
+		String expected = "shader_type particles; float process_() {foo(); return 1.0;} void process() {} void foo() { process(); }";
 		TEST_CONVERSION(code, expected, true);
 	}
 	SUBCASE("No function named `vertex`") {
@@ -215,7 +291,7 @@ TEST_CASE("[ShaderDeprecatedConverter] particles::vertex() -> particles::process
 }
 
 TEST_CASE("[ShaderDeprecatedConverter] CLEARCOAT_GLOSS -> CLEARCOAT_ROUGHNESS") {
-	SUBCASE("left-hand simple assignment") {
+	SUBCASE("Left-hand simple assignment") {
 		String code("shader_type spatial; void fragment() {\n"
 					"CLEARCOAT_GLOSS = 1.0;\n"
 					"}\n");
@@ -224,7 +300,7 @@ TEST_CASE("[ShaderDeprecatedConverter] CLEARCOAT_GLOSS -> CLEARCOAT_ROUGHNESS") 
 						"}\n");
 		TEST_CONVERSION(code, expected, true);
 	}
-	SUBCASE("left-hand *= assignment") {
+	SUBCASE("Left-hand *= assignment") {
 		String code("shader_type spatial; void fragment() {\n"
 					"CLEARCOAT_GLOSS *= 0.5;\n"
 					"}\n");
@@ -233,7 +309,7 @@ TEST_CASE("[ShaderDeprecatedConverter] CLEARCOAT_GLOSS -> CLEARCOAT_ROUGHNESS") 
 						"}\n");
 		TEST_CONVERSION(code, expected, true);
 	}
-	SUBCASE("right-hand usage") {
+	SUBCASE("Right-hand usage") {
 		String code("shader_type spatial; void fragment() {\n"
 					"float foo = CLEARCOAT_GLOSS;\n"
 					"}\n");
@@ -263,7 +339,7 @@ TEST_CASE("[ShaderDeprecatedConverter] Wrap INDEX in int()") {
 
 		TEST_CONVERSION(code, expected, true);
 	}
-	SUBCASE("without clobbering existing casts") {
+	SUBCASE("Without clobbering existing casts") {
 		String code("shader_type particles; void vertex() {\n"
 					"float foo = int(INDEX/2) * int(INDEX) * 2 * float(INDEX);\n"
 					"}\n");
@@ -288,93 +364,122 @@ TEST_CASE("[ShaderDeprecatedConverter] All hint renames") {
 	}
 }
 
-TEST_CASE("[ShaderDeprecatedConverter] All built-in renames") {
-	String code_template = "shader_type %s; void %s() { %s; }";
+TEST_CASE("[ShaderDeprecatedConverter] Built-in renames") {
 	// Get all the built-in renames.
 	List<String> builtins;
 	ShaderDeprecatedConverter::_get_builtin_renames_list(&builtins);
-	Vector<RS::ShaderMode> modes = { RS::SHADER_SPATIAL, RS::SHADER_CANVAS_ITEM, RS::SHADER_PARTICLES };
-	for (RS::ShaderMode mode : modes) {
-		for (const String &builtin : builtins) {
-			if (ShaderDeprecatedConverter::_rename_has_special_handling(builtin)) {
-				continue; // skip
-			}
-
-			// Now get the funcs applicable for this mode and built-in.
-			Vector<String> funcs = ShaderDeprecatedConverter::_get_funcs_builtin_rename(mode, builtin);
-			String rename = ShaderDeprecatedConverter::get_builtin_rename(builtin);
-			for (const String &func : funcs) {
-				String code = vformat(code_template, get_shader_mode_name(mode), func, builtin);
-				String expected = vformat(code_template, get_shader_mode_name(mode), func, rename);
-				TEST_CONVERSION(code, expected, true);
-			}
+	// remove built-ins that have special handling, we test those above
+	for (List<String>::Element *E = builtins.front(); E; E = E->next()) {
+		if (ShaderDeprecatedConverter::_rename_has_special_handling(E->get())) {
+			List<String>::Element *prev = E->prev();
+			builtins.erase(E);
+			E = prev;
 		}
 	}
-}
-
-TEST_CASE("[ShaderDeprecatedConverter] No renaming built-ins in non-candidate functions") {
-	String code_template = "shader_type %s; void %s() { float %s = 1.0; %s += 1.0; }";
-	List<String> builtins;
-	ShaderDeprecatedConverter::_get_builtin_renames_list(&builtins);
 	Vector<RS::ShaderMode> modes = { RS::SHADER_SPATIAL, RS::SHADER_CANVAS_ITEM, RS::SHADER_PARTICLES };
+	HashMap<RS::ShaderMode, HashMap<String, Vector<String>>> rename_func_map;
 	for (RS::ShaderMode mode : modes) {
-		ShaderLanguage::ShaderCompileInfo info;
-		get_compile_info(info, mode);
+		rename_func_map[mode] = HashMap<String, Vector<String>>();
 		for (const String &builtin : builtins) {
-			if (ShaderDeprecatedConverter::_rename_has_special_handling(builtin)) {
-				continue; // skip
-			}
-			String rename = ShaderDeprecatedConverter::get_builtin_rename(builtin);
-			Vector<String> candidate_funcs = ShaderDeprecatedConverter::_get_funcs_builtin_rename(mode, builtin);
-			Vector<String> non_funcs;
-			for (KeyValue<StringName, ShaderLanguage::FunctionInfo> &func : info.functions) {
-				if (func.key == "global") {
-					continue;
-				}
-				if (!candidate_funcs.has(func.key)) {
-					non_funcs.push_back(func.key);
+			rename_func_map[mode][builtin] = ShaderDeprecatedConverter::_get_funcs_builtin_rename(mode, builtin);
+		}
+	}
+	SUBCASE("All built-in renames are replaced") {
+		String code_template = "shader_type %s; void %s() { %s; }";
+		for (RS::ShaderMode mode : modes) {
+			for (const String &builtin : builtins) {
+				// Now get the funcs applicable for this mode and built-in.
+				String rename = ShaderDeprecatedConverter::get_builtin_rename(builtin);
+				for (const String &func : rename_func_map[mode][builtin]) {
+					String code = vformat(code_template, get_shader_mode_name(mode), func, builtin);
+					String expected = vformat(code_template, get_shader_mode_name(mode), func, rename);
+					TEST_CONVERSION(code, expected, true);
 				}
 			}
-
-			for (const String &func : non_funcs) {
-				String code = vformat(code_template, get_shader_mode_name(mode), func, builtin, builtin);
-				// The code should not change.
-				TEST_CONVERSION(code, code, false);
+		}
+	}
+	SUBCASE("No renaming built-ins in non-candidate functions") {
+		String code_template = "shader_type %s; void %s() { float %s = 1.0; %s += 1.0; }";
+		for (RS::ShaderMode mode : modes) {
+			ShaderLanguage::ShaderCompileInfo info;
+			get_compile_info(info, mode);
+			for (const String &builtin : builtins) {
+				Vector<String> non_funcs;
+				for (KeyValue<StringName, ShaderLanguage::FunctionInfo> &func : info.functions) {
+					if (func.key == "global") {
+						continue;
+					}
+					if (!rename_func_map[mode][builtin].has(func.key)) {
+						non_funcs.push_back(func.key);
+					}
+				}
+				String rename = ShaderDeprecatedConverter::get_builtin_rename(builtin);
+				for (const String &func : non_funcs) {
+					String code = vformat(code_template, get_shader_mode_name(mode), func, builtin, builtin);
+					// The code should not change.
+					TEST_CONVERSION(code, code, false);
+				}
+			}
+		}
+	}
+	SUBCASE("[ShaderDeprecatedConverter] No renaming built-ins in candidate functions with built-in declared") {
+		String code_template = "shader_type %s; void %s() { float %s = 1.0; %s += 1.0; }";
+		for (RS::ShaderMode mode : modes) {
+			for (const String &builtin : builtins) {
+				for (const String &func : rename_func_map[mode][builtin]) {
+					String code = vformat(code_template, get_shader_mode_name(mode), func, builtin, builtin);
+					// The code should not change.
+					TEST_CONVERSION(code, code, false);
+				}
 			}
 		}
 	}
 }
 
-TEST_CASE("[ShaderDeprecatedConverter] No renaming built-ins in candidate functions with built-in declared") {
-	// For example, "shader_type spatial; void fragment() { float NORMALMAP = 1.0; }" is valid 4.x code but not valid 3.x code
-	String code_template = "shader_type %s; void %s() { float %s = 1.0; %s += 1.0; }";
-	// Get all the built-in renames.
-	List<String> builtins;
-	ShaderDeprecatedConverter::_get_builtin_renames_list(&builtins);
-	Vector<RS::ShaderMode> modes = { RS::SHADER_SPATIAL, RS::SHADER_CANVAS_ITEM, RS::SHADER_PARTICLES };
-	for (RS::ShaderMode mode : modes) {
-		for (const String &builtin : builtins) {
-			if (ShaderDeprecatedConverter::_rename_has_special_handling(builtin)) {
-				continue; // skip
-			}
-			Vector<String> funcs = ShaderDeprecatedConverter::_get_funcs_builtin_rename(mode, builtin);
-			for (const String &func : funcs) {
-				String code = vformat(code_template, get_shader_mode_name(mode), func, builtin, builtin);
-				CHECK_EQ(code.is_empty(), false);
-				// The code should not change.
-				TEST_CONVERSION(code, code, false);
-			}
-		}
-	}
-}
-
-// If this fails, remove the MODULATE entry from ShaderDeprecatedConverter::removed_builtins, then remove this test.
-TEST_CASE("[ShaderDeprecatedConverter] MODULATE is not a built-in on canvas_item") {
+// TODO: Remove this when the MODULATE built-in PR lands.
+// If this fails, remove the MODULATE entry from ShaderDeprecatedConverter::removed_builtins, then remove this test and the following test.
+TEST_CASE("[ShaderDeprecatedConverter] MODULATE is not a built-in") {
 	ShaderLanguage::ShaderCompileInfo info;
 	get_compile_info(info, RS::ShaderMode::SHADER_CANVAS_ITEM);
-	for (const String &func : Vector<String>{ "vertex", "fragment", "light" }) {
-		auto &finfo = info.functions[func];
-		CHECK_EQ(finfo.built_ins.has("MODULATE"), false);
+	SUBCASE("MODULATE is not a built-in") {
+		for (const String &func : Vector<String>{ "vertex", "fragment", "light" }) {
+			auto &finfo = info.functions[func];
+			CHECK_FALSE(finfo.built_ins.has("MODULATE"));
+		}
+	}
+}
+
+// Don't remove this one if the above doesn't fail too.
+TEST_CASE("[ShaderDeprecatedConverter] MODULATE handling") {
+	ShaderLanguage::ShaderCompileInfo info;
+	get_compile_info(info, RS::ShaderMode::SHADER_CANVAS_ITEM);
+	SUBCASE("Fails to compile") {
+		for (const String &func : Vector<String>{ "vertex", "fragment", "light" }) {
+			String code = vformat("shader_type canvas_item; void %s() { MODULATE; }", func);
+			ShaderLanguage sl;
+			CHECK_NE(sl.compile(code, info), Error::OK);
+		}
+	}
+	SUBCASE("Fails to convert on fail_on_unported=true") {
+		for (const String &func : Vector<String>{ "vertex", "fragment", "light" }) {
+			String code = vformat("shader_type canvas_item; void %s() { MODULATE; }", func);
+			ShaderDeprecatedConverter converter;
+			CHECK(converter.is_code_deprecated(code));
+			converter.set_fail_on_unported(true);
+			CHECK_FALSE(converter.convert_code(code));
+		}
+	}
+
+	SUBCASE("Conversion succeeds on fail_on_unported=false") {
+		for (const String &func : Vector<String>{ "vertex", "fragment", "light" }) {
+			String code = vformat("shader_type canvas_item; void %s() { MODULATE; }", func);
+			ShaderDeprecatedConverter converter;
+			CHECK(converter.is_code_deprecated(code));
+			converter.set_fail_on_unported(false);
+			CHECK(converter.convert_code(code));
+			String new_code = converter.emit_code();
+			CHECK(new_code.find("/*") != -1);
+		}
 	}
 }
 
@@ -391,9 +496,12 @@ TEST_CASE("[ShaderDeprecatedConverter] Uniform declarations for removed builtins
 		get_compile_info(info, mode);
 		for (const String &builtin : builtins) {
 			// now get the funcs applicable for this mode and builtins
-			auto type = ShaderDeprecatedConverter::get_removed_builtin_type(builtin);
-			auto hints = ShaderDeprecatedConverter::get_removed_builtin_hints(builtin);
-			auto funcs = ShaderDeprecatedConverter::_get_funcs_builtin_removal(mode, builtin);
+			ShaderLanguage::TokenType type = ShaderDeprecatedConverter::get_removed_builtin_uniform_type(builtin);
+			if (type == ShaderDeprecatedConverter::TokenType::TK_ERROR) {
+				continue;
+			}
+			Vector<ShaderLanguage::TokenType> hints = ShaderDeprecatedConverter::get_removed_builtin_hints(builtin);
+			Vector<String> funcs = ShaderDeprecatedConverter::_get_funcs_builtin_removal(mode, builtin);
 			String hint_string = "";
 			for (int i = 0; i < hints.size(); i++) {
 				hint_string += ShaderDeprecatedConverter::get_tokentype_text(hints[i]);
@@ -404,12 +512,12 @@ TEST_CASE("[ShaderDeprecatedConverter] Uniform declarations for removed builtins
 			String uniform_decl = vformat(uniform_template, ShaderDeprecatedConverter::get_tokentype_text(type), builtin, hint_string);
 			for (const String &func : funcs) {
 				String code = vformat(code_template, get_shader_mode_name(mode), "", func, builtin);
-				if (type == ShaderDeprecatedConverter::TokenType::TK_ERROR) { // Unported builtins.
-					ShaderDeprecatedConverter converter(code);
-					CHECK_EQ(converter.is_code_deprecated(), true);
-					CHECK_EQ(converter.convert_code(), false);
+				if (type == ShaderDeprecatedConverter::TokenType::TK_ERROR) { // Unported builtins with no uniform declaration
+					ShaderDeprecatedConverter converter;
+					CHECK(converter.is_code_deprecated(code));
+					CHECK_FALSE(converter.convert_code(code));
 					converter.set_fail_on_unported(false);
-					CHECK_EQ(converter.convert_code(), true);
+					CHECK(converter.convert_code(code));
 					continue;
 				}
 				String expected = vformat(code_template, get_shader_mode_name(mode), uniform_decl, func, builtin);
@@ -419,13 +527,27 @@ TEST_CASE("[ShaderDeprecatedConverter] Uniform declarations for removed builtins
 	}
 }
 
-TEST_CASE("[ShaderDeprecatedConverter] Test replacement of reserved keywords") {
+// Reserved keywords (i.e. non-built-in function keywords that have a discrete token type)
+TEST_CASE("[ShaderDeprecatedConverter] Replacement of reserved keywords used as identifiers") {
 	Vector<String> keywords;
 	for (int i = 0; i < ShaderLanguage::TK_MAX; i++) {
 		if (ShaderDeprecatedConverter::tokentype_is_new_reserved_keyword(static_cast<ShaderLanguage::TokenType>(i))) {
 			keywords.push_back(ShaderDeprecatedConverter::get_tokentype_text(static_cast<ShaderLanguage::TokenType>(i)));
 		}
 	}
+	Vector<String> hint_keywords;
+	for (int i = 0; i < SL::TK_MAX; i++) {
+		if (SDC::tokentype_is_new_hint(static_cast<SL::TokenType>(i))) {
+			hint_keywords.push_back(SDC::get_tokentype_text(static_cast<SL::TokenType>(i)));
+		}
+	}
+	Vector<String> uniform_quals;
+	for (int i = 0; i < SL::TK_MAX; i++) {
+		if (SL::is_token_uniform_qual(static_cast<SL::TokenType>(i))) {
+			uniform_quals.push_back(SDC::get_tokentype_text(static_cast<SL::TokenType>(i)));
+		}
+	}
+	Vector<String> shader_types_to_test = { "spatial", "canvas_item", "particles" };
 
 	static const char *decl_test_template[]{
 		"shader_type %s;\nvoid %s() {}\n",
@@ -435,50 +557,88 @@ TEST_CASE("[ShaderDeprecatedConverter] Test replacement of reserved keywords") {
 		"shader_type %s;\nvarying float %s;\n",
 		nullptr
 	};
-	Vector<String> shader_types_to_test = { "spatial", "canvas_item", "particles" };
-	for (auto shader_type : shader_types_to_test) {
+	// NOTE: if this fails, the current behavior of the converter to replace these has to be changed.
+	SUBCASE("Code with reserved keywords used as identifiers fail to compile") {
 		ShaderLanguage::ShaderCompileInfo info;
-		get_compile_info(info, get_shader_mode(shader_type));
-		for (const String &keyword : keywords) {
-			for (int i = 0; decl_test_template[i] != nullptr; i++) {
-				if (shader_type == "particles" && String(decl_test_template[i]).contains("varying")) {
-					continue;
+		get_compile_info(info, RS::SHADER_SPATIAL);
+		for (const String &shader_type : shader_types_to_test) {
+			for (const String &keyword : keywords) {
+				for (int i = 0; decl_test_template[i] != nullptr; i++) {
+					String code = vformat(decl_test_template[i], shader_type, keyword);
+					ShaderLanguage sl;
+					CHECK_NE(sl.compile(code, info), Error::OK);
 				}
-				String code = vformat(decl_test_template[i], shader_type, keyword);
-				ShaderLanguage sl;
-				CHECK_NE(sl.compile(code, info), Error::OK);
-				sl.clear();
-				String expected = vformat(decl_test_template[i], shader_type, keyword + "_");
-				TEST_CONVERSION(code, expected, true);
 			}
 		}
 	}
-}
-
-TEST_CASE("[ShaderDeprecatedConverter] Test removed types") {
-	static const char *decl_test_template[]{
-		"shader_type spatial;\n%s foo() {}\n",
-		"shader_type spatial;\nvoid test_func() {%s foo;}\n",
-		"shader_type spatial;\nvarying %s foo;\n",
-		nullptr
-	};
-	Vector<String> shader_types_to_test = { "spatial", "canvas_item", "particles" };
-	List<String> removed_types;
-	ShaderDeprecatedConverter::_get_type_removals_list(&removed_types);
-	if (removed_types.is_empty()) {
-		WARN_PRINT("No removed types found, this test is not useful.");
-		return;
+	SUBCASE("Code with reserved keywords used as identifiers is converted successfully") {
+		for (const String &shader_type : shader_types_to_test) {
+			ShaderLanguage::ShaderCompileInfo info;
+			get_compile_info(info, get_shader_mode(shader_type));
+			for (const String &keyword : keywords) {
+				for (int i = 0; decl_test_template[i] != nullptr; i++) {
+					if (shader_type == "particles" && String(decl_test_template[i]).contains("varying")) {
+						continue;
+					}
+					String code = vformat(decl_test_template[i], shader_type, keyword);
+					String expected = vformat(decl_test_template[i], shader_type, keyword + "_");
+					TEST_CONVERSION(code, expected, true);
+				}
+			}
+		}
 	}
-	ShaderLanguage::ShaderCompileInfo info;
-	get_compile_info(info, RS::SHADER_SPATIAL);
-	for (const String &removed_type : removed_types) {
-		for (int i = 0; decl_test_template[i] != nullptr; i++) {
-			String code = vformat(decl_test_template[i], removed_type);
-			ShaderDeprecatedConverter converter(code);
-			CHECK_EQ(converter.is_code_deprecated(), true);
-			CHECK_EQ(converter.convert_code(), false);
-			converter.set_fail_on_unported(false);
-			CHECK_EQ(converter.convert_code(), true);
+	static const char *new_hint_test = "shader_type spatial;\nuniform sampler2D foo : %s; const float %s = 1.0;\n";
+	SUBCASE("New hints used as hints are not replaced") {
+		for (const String &hint : hint_keywords) {
+			String code = vformat(new_hint_test, hint, "bar");
+			// Code should not change.
+			TEST_CONVERSION(code, code, false);
+		}
+	}
+
+	SUBCASE("Mixed new hints used as hints and new hints used as identifiers") {
+		for (const String &hint : hint_keywords) {
+			String code = vformat(new_hint_test, hint, hint);
+			// Should not change.
+			ShaderDeprecatedConverter converter;
+			CHECK_FALSE(converter.is_code_deprecated(code)); // Should be detected as not deprecated.
+			converter.set_warning_comments(false);
+			CHECK(converter.convert_code(code));
+			String new_code = converter.emit_code();
+			// Code should not change
+			CHECK_EQ(new_code, code);
+			// Check for warning comment
+			converter.set_warning_comments(true);
+			new_code = converter.emit_code();
+			CHECK(new_code.contains("/* !convert WARNING:"));
+		}
+	}
+	static const char *non_id_keyword_test = "shader_type spatial;\n%s uniform sampler2D foo; const float %s = 1.0;\n";
+	SUBCASE("New keywords not used as identifiers are not replaced") {
+		for (const String &qual : uniform_quals) {
+			// e.g. "shader_type spatial;\nglobal uniform sampler2D foo; const float bar = 1.0;\n"
+			String code = vformat(non_id_keyword_test, qual, "bar");
+			// Code should not change.
+			TEST_CONVERSION(code, code, false);
+		}
+	}
+
+	SUBCASE("Mixed idiomatic new reserved words and new reserved words used as identifiers") {
+		for (const String &qual : uniform_quals) {
+			// e.g. "shader_type spatial;\nglobal uniform sampler2D foo; const float global = 1.0;\n"
+			String code = vformat(non_id_keyword_test, qual, qual);
+			// Should not change.
+			ShaderDeprecatedConverter converter;
+			CHECK_FALSE(converter.is_code_deprecated(code)); // Should be detected as not deprecated.
+			converter.set_warning_comments(false);
+			CHECK(converter.convert_code(code));
+			String new_code = converter.emit_code();
+			// Code should not change
+			CHECK_EQ(new_code, code);
+			// Check for warning comment
+			converter.set_warning_comments(true);
+			new_code = converter.emit_code();
+			CHECK(new_code.contains("/* !convert WARNING:"));
 		}
 	}
 }

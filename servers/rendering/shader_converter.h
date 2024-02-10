@@ -44,25 +44,24 @@ public:
 	using TT = TokenType;
 	using TokE = List<Token>::Element;
 
-	ShaderDeprecatedConverter() = delete;
-	explicit ShaderDeprecatedConverter(const String &p_code);
-	bool convert_code();
-	bool is_code_deprecated();
+	ShaderDeprecatedConverter(){};
+	bool is_code_deprecated(const String &p_code);
+	bool convert_code(const String &p_code);
 	String get_error_text() const;
 	int get_error_line() const;
 	String emit_code() const;
-	void set_add_comments(bool p_add_comments);
+	void set_warning_comments(bool p_add_comments);
 	void set_fail_on_unported(bool p_fail_on_unported);
 	void set_assume_correct(bool p_assume_correct);
+	void set_force_reserved_word_replacement(bool p_force_reserved_word_replacement);
+	void set_verbose_comments(bool p_verbose_comments);
 
-	static bool token_is_skippable(const Token &p_tk);
-	static bool tokentype_is_new_reserved_keyword(const TokenType &p_tk_type);
 	static bool tokentype_is_identifier(const TokenType &p_tk_type);
+	static bool tokentype_is_new_reserved_keyword(const TokenType &p_tk_type);
 	static bool tokentype_is_new_type(const TokenType &p_tk_type);
-	static bool token_is_type(const Token &p_tk);
-	static bool token_is_hint(const Token &p_tk);
 	static bool tokentype_is_new_hint(const TokenType &p_tk);
-	static bool token_is_new_builtin_func(const Token &p_tk);
+
+	static bool id_is_new_builtin_func(const String &p_name);
 
 	static String get_tokentype_text(TokenType p_tk_type);
 
@@ -80,12 +79,14 @@ public:
 
 	static bool has_removed_type(const String &p_name);
 
-	static bool is_renamed_function(RS::ShaderMode p_mode, const String &p_name);
-	static String get_renamed_function(const String &p_name);
+	static bool is_renamed_main_function(RS::ShaderMode p_mode, const String &p_name);
+	static bool is_renamee_main_function(RS::ShaderMode p_mode, const String &p_name);
+	static String get_main_function_rename(const String &p_name);
 	static TokenType get_renamed_function_type(const String &p_name);
+	static int get_renamed_function_arg_count(const String &p_name);
 
 	static bool is_removed_builtin(RS::ShaderMode p_mode, const String &p_name, const String &p_function = "");
-	static TokenType get_removed_builtin_type(const String &p_name);
+	static TokenType get_removed_builtin_uniform_type(const String &p_name);
 	static Vector<TokenType> get_removed_builtin_hints(const String &p_name);
 
 	static bool _rename_has_special_handling(const String &p_name);
@@ -97,6 +98,7 @@ public:
 	static void _get_render_mode_removals_list(List<String> *r_list);
 	static void _get_builtin_removals_list(List<String> *r_list);
 	static void _get_type_removals_list(List<String> *r_list);
+	static void _get_new_builtin_funcs_list(List<String> *r_list);
 	static Vector<String> _get_funcs_builtin_rename(RS::ShaderMode p_mode, const String &p_name);
 	static Vector<String> _get_funcs_builtin_removal(RS::ShaderMode p_mode, const String &p_name);
 
@@ -121,6 +123,7 @@ public:
 	struct RenamedFunctions {
 		const RS::ShaderMode mode;
 		const ShaderLanguage::TokenType type;
+		const int arg_count;
 		const char *name;
 		const char *replacement;
 	};
@@ -141,14 +144,23 @@ public:
 private:
 	struct UniformDecl {
 		List<Token>::Element *start_pos = nullptr;
+		List<Token>::Element *uniform_stmt_pos = nullptr;
 		List<Token>::Element *end_pos = nullptr;
+		List<Token>::Element *interp_qual_pos = nullptr;
 		List<Token>::Element *type_pos = nullptr;
 		List<Token>::Element *name_pos = nullptr;
 		Vector<List<Token>::Element *> hint_poses;
+
 		bool is_array = false;
+		bool has_uniform_qual() const {
+			return start_pos != nullptr && ShaderLanguage::is_token_uniform_qual(start_pos->get().type);
+		}
+		bool has_interp_qual() const {
+			return interp_qual_pos != nullptr;
+		}
 	};
 	struct VarDecl {
-		List<Token>::Element *start_pos = nullptr; // Varying token, const token, type token, or identifier if compound declaration (e.g. 'vec3 a, b;')
+		List<Token>::Element *start_pos = nullptr;
 		List<Token>::Element *end_pos = nullptr; // semicolon or comma or right paren
 		List<Token>::Element *type_pos = nullptr;
 		List<Token>::Element *name_pos = nullptr;
@@ -164,13 +176,17 @@ private:
 	};
 
 	struct FunctionDecl {
-		List<Token>::Element *start_pos = nullptr; // type or const
+		List<Token>::Element *start_pos = nullptr;
 		List<Token>::Element *type_pos = nullptr;
 		List<Token>::Element *name_pos = nullptr;
 		List<Token>::Element *args_start_pos = nullptr; // left paren
 		List<Token>::Element *args_end_pos = nullptr; // right paren
 		List<Token>::Element *body_start_pos = nullptr; // left curly
 		List<Token>::Element *body_end_pos = nullptr; // right curly - end of function
+		bool is_renamed_main_function(RS::ShaderMode p_mode) const;
+		bool is_new_main_function(RS::ShaderMode p_mode) const;
+
+		int arg_count = 0;
 		bool has_array_return_type = false;
 		void clear() {
 			type_pos = nullptr;
@@ -188,29 +204,35 @@ private:
 	static const RemovedRenderModes removed_render_modes[];
 	static const RemovedBuiltins removed_builtins[];
 	static const char *removed_types[];
-
+	static HashSet<String> _new_builtin_funcs;
+	String old_code;
 	List<Token> code_tokens;
 	List<Token>::Element *curr_ptr = nullptr;
-	List<Token>::Element *after_type_decl = nullptr;
+	List<Token>::Element *after_shader_decl = nullptr;
 	HashMap<String, UniformDecl> uniform_decls;
 	HashMap<String, Vector<VarDecl>> var_decls;
 	HashMap<String, FunctionDecl> function_decls;
 	HashMap<String, HashSet<String>> scope_declarations;
-	RenderingServer::ShaderMode shader_mode;
-	const String old_code;
-	bool assume_correct = true;
-	bool add_comments = false;
+	RenderingServer::ShaderMode shader_mode = RenderingServer::ShaderMode::SHADER_MAX;
+
+	bool warning_comments = true;
+	bool verbose_comments = false;
 	bool fail_on_unported = true;
 
 	bool function_pass_failed = false;
 	bool var_pass_failed = false;
 	String err_str;
 	int err_line = 0;
+
 	Token eof_token{ ShaderLanguage::TK_EOF, {}, 0, 0, 0, 0 };
+
 	static RS::ShaderMode get_shader_mode_from_string(const String &p_mode);
 
 	String get_token_literal_text(const Token &p_tk) const;
 	static Token mkTok(TokenType p_type, const StringName &p_text = StringName(), double constant = 0, uint16_t p_line = 0);
+	static bool token_is_skippable(const Token &p_tk);
+	static bool token_is_type(const Token &p_tk);
+	static bool token_is_hint(const Token &p_tk);
 
 	void reset();
 	bool preprocess_code();
@@ -231,12 +253,22 @@ private:
 	TokenType _peek_tk_type(int64_t p_count, List<Token>::Element **r_pos = nullptr) const;
 
 	bool scope_has_decl(const String &p_scope, const String &p_name) const;
+	bool _handle_new_keyword_rename(TokenType p_tk_type, const String &p_name, bool p_detected_3x, HashMap<TokenType, String> &p_func_renames);
 
+	bool _has_any_preprocessor_directives();
+	bool _is_code_deprecated();
+	bool _parse_uniform();
+	static bool _tok_is_start_of_decl(const Token &p_tk);
+	bool _skip_uniform();
+	bool _parse_uniforms();
 	bool _skip_array_size();
 	bool _skip_struct();
-	bool _add_comment_before(const String &p_comment, List<Token>::Element *p_pos = nullptr);
-	bool _add_comment_at_eol(const String &p_comment, List<Token>::Element *p_pos = nullptr);
-
+	bool _check_deprecated_type(TokE *p_type_tok);
+	bool _add_warning_comment_before(const String &p_comment, List<Token>::Element *p_pos);
+	bool _add_comment_at_eol(const String &p_comment, List<Token>::Element *p_pos);
+	bool _process_func_decl_statement(TokE *p_start_tok, TokE *p_type_tok, bool p_second_pass = false);
+	bool _process_decl_statement(TokE *p_start_tok, TokE *p_type_tok, const String &p_scope = "<global>", bool p_func_args = false);
+	bool _parse_decls(bool p_first_pass);
 	bool _insert_uniform_declaration(const String &p_name);
 	List<Token>::Element *_remove_from_curr_to(List<Token>::Element *p_end);
 	List<Token>::Element *_get_end_of_closure();

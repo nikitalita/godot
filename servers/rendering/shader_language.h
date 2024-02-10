@@ -784,6 +784,7 @@ public:
 	static DataInterpolation get_token_interpolation(TokenType p_type);
 	static bool is_token_precision(TokenType p_type);
 	static bool is_token_arg_qual(TokenType p_type);
+	static bool is_token_uniform_qual(TokenType p_type);
 	static DataPrecision get_token_precision(TokenType p_type);
 	static String get_precision_name(DataPrecision p_type);
 	static String get_interpolation_name(DataInterpolation p_interpolation);

@@ -1069,6 +1069,12 @@ bool ShaderLanguage::is_token_arg_qual(TokenType p_type) {
 			p_type == TK_ARG_INOUT);
 }
 
+bool ShaderLanguage::is_token_uniform_qual(TokenType p_type) {
+	return (
+			p_type == TK_INSTANCE ||
+			p_type == TK_GLOBAL);
+}
+
 ShaderLanguage::DataPrecision ShaderLanguage::get_token_precision(TokenType p_type) {
 	if (p_type == TK_PRECISION_LOW) {
 		return PRECISION_LOWP;

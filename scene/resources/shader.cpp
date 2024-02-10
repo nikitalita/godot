@@ -108,12 +108,15 @@ void Shader::set_code(const String &p_code) {
 			info.global_shader_uniform_type_func = _get_global_shader_uniform_type;
 			Error err = sl.compile(p_code, info);
 			if (err) {
-				ShaderDeprecatedConverter sdc{ p_code };
-				if (sdc.is_code_deprecated()) {
-					ERR_FAIL_COND_MSG(!sdc.convert_code(), "Shader conversion failed: " + sdc.get_error_text());
+				ShaderDeprecatedConverter sdc;
+				if (sdc.is_code_deprecated(p_code)) {
+					ShaderDeprecatedConverter sdc;
+					ERR_FAIL_COND_MSG(!sdc.convert_code(p_code), vformat("Shader conversion failed (line %d): %s", sdc.get_error_line(), sdc.get_error_text()));
 					code = sdc.emit_code();
 					pp_code = code;
-				} // If the code is not deprecated, let it fall through to the compile step after this if block so that we get the full compile error.
+				} else if (sdc.get_error_text() != "") { // Preprocessing failed.
+					WARN_PRINT(vformat("Shader conversion failed (line %d): %s", sdc.get_error_line(), sdc.get_error_text()));
+				} // If the code is reported as not deprecated, let it fall through to the compile step after this if block so that we get the full compile error.
 			}
 		}
 	}

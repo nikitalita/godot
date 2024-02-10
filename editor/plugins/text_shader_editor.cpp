@@ -700,8 +700,13 @@ void TextShaderEditor::_menu_option(int p_option) {
 			if (code.is_empty()) {
 				return;
 			}
-			ShaderDeprecatedConverter converter(code);
-			if (!converter.is_code_deprecated()) {
+			ShaderDeprecatedConverter converter;
+			if (!converter.is_code_deprecated(code)) {
+				if (converter.get_error_text() != String()) {
+					shader_convert_error_dialog->set_text(vformat(RTR("Line %d: %s"), converter.get_error_line(), converter.get_error_text()));
+					shader_convert_error_dialog->popup_centered();
+					ERR_PRINT("Shader conversion failed: " + converter.get_error_text());
+				}
 				confirm_convert_shader->popup_centered();
 				return;
 			}
@@ -766,8 +771,8 @@ void TextShaderEditor::_convert_shader() {
 	if (code.is_empty()) {
 		return;
 	}
-	ShaderDeprecatedConverter converter(code);
-	if (!converter.convert_code()) {
+	ShaderDeprecatedConverter converter;
+	if (!converter.convert_code(code)) {
 		String err_text = converter.get_error_text();
 		if (err_text.is_empty()) {
 			err_text = TTR("Unknown error occurred while converting the shader.");
