@@ -204,6 +204,7 @@ private:
 	static const RemovedRenderModes removed_render_modes[];
 	static const RemovedBuiltins removed_builtins[];
 	static const char *removed_types[];
+	static const char *old_builtin_funcs[];
 	static HashSet<String> _new_builtin_funcs;
 	String old_code;
 	List<Token> code_tokens;
@@ -272,6 +273,7 @@ private:
 	bool _insert_uniform_declaration(const String &p_name);
 	List<Token>::Element *_remove_from_curr_to(List<Token>::Element *p_end);
 	List<Token>::Element *_get_end_of_closure();
+	static HashSet<String> _construct_new_builtin_funcs();
 
 	enum {
 		NEW_IDENT = -1

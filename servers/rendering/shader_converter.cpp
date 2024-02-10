@@ -36,7 +36,7 @@
 
 #define SL ShaderLanguage
 
-static const char *old_builtin_funcs[]{
+const char *ShaderDeprecatedConverter::old_builtin_funcs[]{
 	"abs",
 	"acos",
 	"acosh",
@@ -131,23 +131,8 @@ static const char *old_builtin_funcs[]{
 	"vec2",
 	"vec3",
 	"vec4",
+	nullptr
 };
-
-static HashSet<String> _construct_new_builtin_funcs() {
-	List<String> current_builtin_funcs;
-	ShaderLanguage::get_builtin_funcs(&current_builtin_funcs);
-	HashSet<String> old_funcs;
-	for (int i = 0; old_builtin_funcs[i] != nullptr; i++) {
-		old_funcs.insert(old_builtin_funcs[i]);
-	}
-	HashSet<String> new_funcs;
-	for (List<String>::Element *E = current_builtin_funcs.front(); E; E = E->next()) {
-		if (!old_funcs.has(E->get())) {
-			new_funcs.insert(E->get());
-		}
-	}
-	return new_funcs;
-}
 
 const ShaderDeprecatedConverter::RenamedBuiltins ShaderDeprecatedConverter::renamed_builtins[] = {
 	{ "ALPHA_SCISSOR", "ALPHA_SCISSOR_THRESHOLD", { { RS::SHADER_SPATIAL, { "fragment" } } }, false },
@@ -206,6 +191,22 @@ const char *ShaderDeprecatedConverter::removed_types[]{
 };
 
 HashSet<String> ShaderDeprecatedConverter::_new_builtin_funcs = HashSet<String>();
+
+HashSet<String> ShaderDeprecatedConverter::_construct_new_builtin_funcs() {
+	List<String> current_builtin_funcs;
+	ShaderLanguage::get_builtin_funcs(&current_builtin_funcs);
+	HashSet<String> old_funcs;
+	for (int i = 0; old_builtin_funcs[i] != nullptr; i++) {
+		old_funcs.insert(old_builtin_funcs[i]);
+	}
+	HashSet<String> new_funcs;
+	for (List<String>::Element *E = current_builtin_funcs.front(); E; E = E->next()) {
+		if (!old_funcs.has(E->get())) {
+			new_funcs.insert(E->get());
+		}
+	}
+	return new_funcs;
+}
 
 String ShaderDeprecatedConverter::get_builtin_rename(const String &p_name) {
 	for (int i = 0; renamed_builtins[i].name != nullptr; i++) {
