@@ -110,7 +110,6 @@ void Shader::set_code(const String &p_code) {
 			if (err) {
 				ShaderDeprecatedConverter sdc;
 				if (sdc.is_code_deprecated(p_code)) {
-					ShaderDeprecatedConverter sdc;
 					ERR_FAIL_COND_MSG(!sdc.convert_code(p_code), vformat("Shader conversion failed (line %d): %s", sdc.get_error_line(), sdc.get_error_text()));
 					code = sdc.emit_code();
 					pp_code = code;
