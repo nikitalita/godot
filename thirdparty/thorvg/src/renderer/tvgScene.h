@@ -59,7 +59,6 @@ struct SceneIterator : Iterator
 struct Scene::Impl
 {
     list<Paint*> paints;
-    RenderMethod* renderer = nullptr;    //keep it for explicit clear
     RenderData rd = nullptr;
     Scene* scene = nullptr;
     uint8_t opacity;                     //for composition
@@ -74,19 +73,10 @@ struct Scene::Impl
         for (auto paint : paints) {
             if (P(paint)->unref() == 0) delete(paint);
         }
-    }
 
-    bool dispose(RenderMethod& renderer)
-    {
-        for (auto paint : paints) {
-            paint->pImpl->dispose(renderer);
+        if (auto renderer = PP(scene)->renderer) {
+            renderer->dispose(rd);
         }
-
-        renderer.dispose(rd);
-        this->renderer = nullptr;
-        this->rd = nullptr;
-
-        return true;
     }
 
     bool needComposition(uint8_t opacity)
@@ -111,7 +101,7 @@ struct Scene::Impl
         return true;
     }
 
-    RenderData update(RenderMethod &renderer, const RenderTransform* transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flag, bool clipper)
+    RenderData update(RenderMethod* renderer, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flag, TVG_UNUSED bool clipper)
     {
         if ((needComp = needComposition(opacity))) {
             /* Overriding opacity value. If this scene is half-translucent,
@@ -119,44 +109,34 @@ struct Scene::Impl
             this->opacity = opacity;
             opacity = 255;
         }
-
-        this->renderer = &renderer;
-
-        if (clipper) {
-            Array<RenderData> rds(paints.size());
-            for (auto paint : paints) {
-                rds.push(paint->pImpl->update(renderer, transform, clips, opacity, flag, true));
-            }
-            rd = renderer.prepare(rds, rd, transform, clips, opacity, flag);
-            return rd;
-        } else {
-            for (auto paint : paints) {
-                paint->pImpl->update(renderer, transform, clips, opacity, flag, false);
-            }
-            return nullptr;
+        for (auto paint : paints) {
+            paint->pImpl->update(renderer, transform, clips, opacity, flag, false);
         }
+        return nullptr;
     }
 
-    bool render(RenderMethod& renderer)
+    bool render(RenderMethod* renderer)
     {
         Compositor* cmp = nullptr;
+        auto ret = true;
+
+        renderer->blend(scene->blend());
 
         if (needComp) {
-            cmp = renderer.target(bounds(renderer), renderer.colorSpace());
-            renderer.beginComposite(cmp, CompositeMethod::None, opacity);
-            needComp = false;
+            cmp = renderer->target(bounds(renderer), renderer->colorSpace());
+            renderer->beginComposite(cmp, CompositeMethod::None, opacity);
         }
 
         for (auto paint : paints) {
-            if (!paint->pImpl->render(renderer)) return false;
+            ret &= paint->pImpl->render(renderer);
         }
 
-        if (cmp) renderer.endComposite(cmp);
+        if (cmp) renderer->endComposite(cmp);
 
-        return true;
+        return ret;
     }
 
-    RenderRegion bounds(RenderMethod& renderer) const
+    RenderRegion bounds(RenderMethod* renderer) const
     {
         if (paints.empty()) return {0, 0, 0, 0};
 
@@ -210,10 +190,12 @@ struct Scene::Impl
         return true;
     }
 
-    Paint* duplicate()
+    Paint* duplicate(Paint* ret)
     {
-        auto ret = Scene::gen().release();
-        auto dup = ret->pImpl;
+        if (ret) TVGERR("RENDERER", "TODO: duplicate()");
+
+        auto scene = Scene::gen().release();
+        auto dup = scene->pImpl;
 
         for (auto paint : paints) {
             auto cdup = paint->duplicate();
@@ -221,19 +203,15 @@ struct Scene::Impl
             dup->paints.push_back(cdup);
         }
 
-        return ret;
+        return scene;
     }
 
     void clear(bool free)
     {
-        auto dispose = renderer ? true : false;
-
         for (auto paint : paints) {
-            if (dispose) free &= P(paint)->dispose(*renderer);
             if (P(paint)->unref() == 0 && free) delete(paint);
         }
         paints.clear();
-        renderer = nullptr;
     }
 
     Iterator* iterator()

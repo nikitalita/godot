@@ -134,7 +134,7 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 
 	void _state_machine_draw();
 
-	void _state_machine_pos_draw_individual(String p_name, float p_ratio);
+	void _state_machine_pos_draw_individual(const String &p_name, float p_ratio);
 	void _state_machine_pos_draw_all();
 
 	void _update_graph();
@@ -322,7 +322,7 @@ protected:
 public:
 	void add_transition(const StringName &p_from, const StringName &p_to, Ref<AnimationNodeStateMachineTransition> p_transition);
 
-	EditorAnimationMultiTransitionEdit(){};
+	EditorAnimationMultiTransitionEdit() {}
 };
 
 #endif // ANIMATION_STATE_MACHINE_EDITOR_H

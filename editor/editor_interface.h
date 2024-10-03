@@ -45,9 +45,12 @@ class EditorPlugin;
 class EditorResourcePreview;
 class EditorSelection;
 class EditorSettings;
+class EditorUndoRedoManager;
 class FileSystemDock;
 class Mesh;
 class Node;
+class PropertySelector;
+class SceneTreeDialog;
 class ScriptEditor;
 class SubViewport;
 class Texture2D;
@@ -60,12 +63,30 @@ class EditorInterface : public Object {
 
 	static EditorInterface *singleton;
 
+	// Editor dialogs.
+
+	PropertySelector *property_selector = nullptr;
+	SceneTreeDialog *node_selector = nullptr;
+
+	void _node_selected(const NodePath &p_node_paths, const Callable &p_callback);
+	void _node_selection_canceled(const Callable &p_callback);
+	void _property_selected(const String &p_property_name, const Callable &p_callback);
+	void _property_selection_canceled(const Callable &p_callback);
+	void _call_dialog_callback(const Callable &p_callback, const Variant &p_selected, const String &p_context);
+
 	// Editor tools.
 
 	TypedArray<Texture2D> _make_mesh_previews(const TypedArray<Mesh> &p_meshes, int p_preview_size);
 
 protected:
 	static void _bind_methods();
+
+#ifndef DISABLE_DEPRECATED
+	void _popup_node_selector_bind_compat_94323(const Callable &p_callback, const TypedArray<StringName> &p_valid_types = TypedArray<StringName>());
+	void _popup_property_selector_bind_compat_94323(Object *p_object, const Callable &p_callback, const PackedInt32Array &p_type_filter = PackedInt32Array());
+
+	static void _bind_compatibility_methods();
+#endif
 
 public:
 	static EditorInterface *get_singleton() { return singleton; }
@@ -80,6 +101,7 @@ public:
 	EditorResourcePreview *get_resource_previewer() const;
 	EditorSelection *get_selection() const;
 	Ref<EditorSettings> get_editor_settings() const;
+	EditorUndoRedoManager *get_editor_undo_redo() const;
 
 	Vector<Ref<Texture2D>> make_mesh_previews(const Vector<Ref<Mesh>> &p_meshes, Vector<Transform3D> *p_transforms, int p_preview_size);
 
@@ -99,6 +121,7 @@ public:
 	void set_main_screen_editor(const String &p_name);
 	void set_distraction_free_mode(bool p_enter);
 	bool is_distraction_free_mode_enabled() const;
+	bool is_multi_window_enabled() const;
 
 	float get_editor_scale() const;
 
@@ -109,6 +132,12 @@ public:
 
 	String get_current_feature_profile() const;
 	void set_current_feature_profile(const String &p_profile_name);
+
+	// Editor dialogs.
+
+	void popup_node_selector(const Callable &p_callback, const TypedArray<StringName> &p_valid_types = TypedArray<StringName>(), Node *p_current_value = nullptr);
+	// Must use Vector<int> because exposing Vector<Variant::Type> is not supported.
+	void popup_property_selector(Object *p_object, const Callable &p_callback, const PackedInt32Array &p_type_filter = PackedInt32Array(), const String &p_current_value = String());
 
 	// Editor docks.
 
@@ -150,10 +179,11 @@ public:
 	void set_movie_maker_enabled(bool p_enabled);
 	bool is_movie_maker_enabled() const;
 
-	// Base.
-
+#ifdef TOOLS_ENABLED
 	virtual void get_argument_options(const StringName &p_function, int p_idx, List<String> *r_options) const override;
+#endif
 
+	// Base.
 	static void create();
 	static void free();
 

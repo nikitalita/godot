@@ -44,6 +44,9 @@
 #include "core/error/error_list.h"
 #include <cstdint>
 
+// Ensure that C++ standard is at least C++17. If on MSVC, also ensures that the `Zc:__cplusplus` flag is present.
+static_assert(__cplusplus >= 201703L);
+
 // Turn argument to string constant:
 // https://gcc.gnu.org/onlinedocs/cpp/Stringizing.html#Stringizing
 #ifndef _STR
@@ -71,12 +74,7 @@
 #endif
 #endif
 
-// No discard allows the compiler to flag warnings if we don't use the return value of functions / classes
-#ifndef _NO_DISCARD_
-#define _NO_DISCARD_ [[nodiscard]]
-#endif
-
-// In some cases _NO_DISCARD_ will get false positives,
+// In some cases [[nodiscard]] will get false positives,
 // we can prevent the warning in specific cases by preceding the call with a cast.
 #ifndef _ALLOW_DISCARD_
 #define _ALLOW_DISCARD_ (void)
@@ -93,6 +91,7 @@
 #undef OK
 #undef CONNECT_DEFERRED // override from Windows SDK, clashes with Object enum
 #undef MemoryBarrier
+#undef MONO_FONT
 #endif
 
 // Make room for our constexpr's below by overriding potential system-specific macros.
@@ -131,7 +130,7 @@ constexpr auto CLAMP(const T m_a, const T2 m_min, const T3 m_max) {
 // Generic swap template.
 #ifndef SWAP
 #define SWAP(m_x, m_y) __swap_tmpl((m_x), (m_y))
-template <class T>
+template <typename T>
 inline void __swap_tmpl(T &x, T &y) {
 	T aux = x;
 	x = y;
@@ -185,7 +184,7 @@ static inline int get_shift_from_power_of_2(unsigned int p_bits) {
 	return -1;
 }
 
-template <class T>
+template <typename T>
 static _FORCE_INLINE_ T nearest_power_of_2_templated(T x) {
 	--x;
 
@@ -255,7 +254,7 @@ static inline uint64_t BSWAP64(uint64_t x) {
 #endif
 
 // Generic comparator used in Map, List, etc.
-template <class T>
+template <typename T>
 struct Comparator {
 	_ALWAYS_INLINE_ bool operator()(const T &p_a, const T &p_b) const { return (p_a < p_b); }
 };

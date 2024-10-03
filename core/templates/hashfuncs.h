@@ -32,10 +32,17 @@
 #define HASHFUNCS_H
 
 #include "core/math/aabb.h"
+#include "core/math/basis.h"
+#include "core/math/color.h"
 #include "core/math/math_defs.h"
 #include "core/math/math_funcs.h"
+#include "core/math/plane.h"
+#include "core/math/projection.h"
+#include "core/math/quaternion.h"
 #include "core/math/rect2.h"
 #include "core/math/rect2i.h"
+#include "core/math/transform_2d.h"
+#include "core/math/transform_3d.h"
 #include "core/math/vector2.h"
 #include "core/math/vector2i.h"
 #include "core/math/vector3.h"
@@ -248,7 +255,7 @@ static _FORCE_INLINE_ uint32_t hash_djb2_one_float(double p_in, uint32_t p_prev 
 	return ((p_prev << 5) + p_prev) + hash_one_uint64(u.i);
 }
 
-template <class T>
+template <typename T>
 static _FORCE_INLINE_ uint32_t hash_make_uint32_t(T p_in) {
 	union {
 		T t;
@@ -281,7 +288,7 @@ static _FORCE_INLINE_ uint64_t hash_djb2_one_64(uint64_t p_in, uint64_t p_prev =
 	return ((p_prev << 5) + p_prev) ^ p_in;
 }
 
-template <class T>
+template <typename T>
 static _FORCE_INLINE_ uint64_t hash_make_uint64_t(T p_in) {
 	union {
 		T t;
@@ -293,15 +300,15 @@ static _FORCE_INLINE_ uint64_t hash_make_uint64_t(T p_in) {
 	return _u._u64;
 }
 
-template <class T>
+template <typename T>
 class Ref;
 
 struct HashMapHasherDefault {
 	// Generic hash function for any type.
-	template <class T>
+	template <typename T>
 	static _FORCE_INLINE_ uint32_t hash(const T *p_pointer) { return hash_one_uint64((uint64_t)p_pointer); }
 
-	template <class T>
+	template <typename T>
 	static _FORCE_INLINE_ uint32_t hash(const Ref<T> &p_ref) { return hash_one_uint64((uint64_t)p_ref.operator->()); }
 
 	static _FORCE_INLINE_ uint32_t hash(const String &p_string) { return p_string.hash(); }
@@ -387,7 +394,7 @@ struct HashMapHasherDefault {
 };
 
 // TODO: Fold this into HashMapHasherDefault once C++20 concepts are allowed
-template <class T>
+template <typename T>
 struct HashableHasher {
 	static _FORCE_INLINE_ uint32_t hash(const T &hashable) { return hashable.hash(); }
 };
@@ -414,6 +421,13 @@ struct HashMapComparatorDefault<double> {
 };
 
 template <>
+struct HashMapComparatorDefault<Color> {
+	static bool compare(const Color &p_lhs, const Color &p_rhs) {
+		return ((p_lhs.r == p_rhs.r) || (Math::is_nan(p_lhs.r) && Math::is_nan(p_rhs.r))) && ((p_lhs.g == p_rhs.g) || (Math::is_nan(p_lhs.g) && Math::is_nan(p_rhs.g))) && ((p_lhs.b == p_rhs.b) || (Math::is_nan(p_lhs.b) && Math::is_nan(p_rhs.b))) && ((p_lhs.a == p_rhs.a) || (Math::is_nan(p_lhs.a) && Math::is_nan(p_rhs.a)));
+	}
+};
+
+template <>
 struct HashMapComparatorDefault<Vector2> {
 	static bool compare(const Vector2 &p_lhs, const Vector2 &p_rhs) {
 		return ((p_lhs.x == p_rhs.x) || (Math::is_nan(p_lhs.x) && Math::is_nan(p_rhs.x))) && ((p_lhs.y == p_rhs.y) || (Math::is_nan(p_lhs.y) && Math::is_nan(p_rhs.y)));
@@ -427,9 +441,90 @@ struct HashMapComparatorDefault<Vector3> {
 	}
 };
 
+template <>
+struct HashMapComparatorDefault<Vector4> {
+	static bool compare(const Vector4 &p_lhs, const Vector4 &p_rhs) {
+		return ((p_lhs.x == p_rhs.x) || (Math::is_nan(p_lhs.x) && Math::is_nan(p_rhs.x))) && ((p_lhs.y == p_rhs.y) || (Math::is_nan(p_lhs.y) && Math::is_nan(p_rhs.y))) && ((p_lhs.z == p_rhs.z) || (Math::is_nan(p_lhs.z) && Math::is_nan(p_rhs.z))) && ((p_lhs.w == p_rhs.w) || (Math::is_nan(p_lhs.w) && Math::is_nan(p_rhs.w)));
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Rect2> {
+	static bool compare(const Rect2 &p_lhs, const Rect2 &p_rhs) {
+		return HashMapComparatorDefault<Vector2>().compare(p_lhs.position, p_rhs.position) && HashMapComparatorDefault<Vector2>().compare(p_lhs.size, p_rhs.size);
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<AABB> {
+	static bool compare(const AABB &p_lhs, const AABB &p_rhs) {
+		return HashMapComparatorDefault<Vector3>().compare(p_lhs.position, p_rhs.position) && HashMapComparatorDefault<Vector3>().compare(p_lhs.size, p_rhs.size);
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Plane> {
+	static bool compare(const Plane &p_lhs, const Plane &p_rhs) {
+		return HashMapComparatorDefault<Vector3>().compare(p_lhs.normal, p_rhs.normal) && ((p_lhs.d == p_rhs.d) || (Math::is_nan(p_lhs.d) && Math::is_nan(p_rhs.d)));
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Transform2D> {
+	static bool compare(const Transform2D &p_lhs, const Transform2D &p_rhs) {
+		for (int i = 0; i < 3; ++i) {
+			if (!HashMapComparatorDefault<Vector2>().compare(p_lhs.columns[i], p_rhs.columns[i])) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Basis> {
+	static bool compare(const Basis &p_lhs, const Basis &p_rhs) {
+		for (int i = 0; i < 3; ++i) {
+			if (!HashMapComparatorDefault<Vector3>().compare(p_lhs.rows[i], p_rhs.rows[i])) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Transform3D> {
+	static bool compare(const Transform3D &p_lhs, const Transform3D &p_rhs) {
+		return HashMapComparatorDefault<Basis>().compare(p_lhs.basis, p_rhs.basis) && HashMapComparatorDefault<Vector3>().compare(p_lhs.origin, p_rhs.origin);
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Projection> {
+	static bool compare(const Projection &p_lhs, const Projection &p_rhs) {
+		for (int i = 0; i < 4; ++i) {
+			if (!HashMapComparatorDefault<Vector4>().compare(p_lhs.columns[i], p_rhs.columns[i])) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+};
+
+template <>
+struct HashMapComparatorDefault<Quaternion> {
+	static bool compare(const Quaternion &p_lhs, const Quaternion &p_rhs) {
+		return ((p_lhs.x == p_rhs.x) || (Math::is_nan(p_lhs.x) && Math::is_nan(p_rhs.x))) && ((p_lhs.y == p_rhs.y) || (Math::is_nan(p_lhs.y) && Math::is_nan(p_rhs.y))) && ((p_lhs.z == p_rhs.z) || (Math::is_nan(p_lhs.z) && Math::is_nan(p_rhs.z))) && ((p_lhs.w == p_rhs.w) || (Math::is_nan(p_lhs.w) && Math::is_nan(p_rhs.w)));
+	}
+};
+
 constexpr uint32_t HASH_TABLE_SIZE_MAX = 29;
 
-const uint32_t hash_table_size_primes[HASH_TABLE_SIZE_MAX] = {
+inline constexpr uint32_t hash_table_size_primes[HASH_TABLE_SIZE_MAX] = {
 	5,
 	13,
 	23,
@@ -462,7 +557,7 @@ const uint32_t hash_table_size_primes[HASH_TABLE_SIZE_MAX] = {
 };
 
 // Computed with elem_i = UINT64_C (0 x FFFFFFFF FFFFFFFF ) / d_i + 1, where d_i is the i-th element of the above array.
-const uint64_t hash_table_size_primes_inv[HASH_TABLE_SIZE_MAX] = {
+inline constexpr uint64_t hash_table_size_primes_inv[HASH_TABLE_SIZE_MAX] = {
 	3689348814741910324,
 	1418980313362273202,
 	802032351030850071,

@@ -31,15 +31,16 @@
 #include "dynamic_font_import_settings.h"
 
 #include "core/config/project_settings.h"
+#include "core/string/translation_server.h"
 #include "editor/editor_file_system.h"
 #include "editor/editor_inspector.h"
 #include "editor/editor_locale_dialog.h"
 #include "editor/editor_node.h"
 #include "editor/editor_property_name_processor.h"
-#include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/editor_file_dialog.h"
+#include "editor/themes/editor_scale.h"
 
 /*************************************************************************/
 /* Settings data                                                         */
@@ -464,6 +465,8 @@ void DynamicFontImportSettingsDialog::_main_prop_changed(const String &p_edited_
 			font_preview->set_antialiasing((TextServer::FontAntialiasing)import_settings_data->get("antialiasing").operator int());
 		} else if (p_edited_property == "generate_mipmaps") {
 			font_preview->set_generate_mipmaps(import_settings_data->get("generate_mipmaps"));
+		} else if (p_edited_property == "disable_embedded_bitmaps") {
+			font_preview->set_disable_embedded_bitmaps(import_settings_data->get("disable_embedded_bitmaps"));
 		} else if (p_edited_property == "multichannel_signed_distance_field") {
 			font_preview->set_multichannel_signed_distance_field(import_settings_data->get("multichannel_signed_distance_field"));
 			_variation_selected();
@@ -485,8 +488,8 @@ void DynamicFontImportSettingsDialog::_main_prop_changed(const String &p_edited_
 		}
 	}
 
-	font_preview_label->add_theme_font_override("font", font_preview);
-	font_preview_label->add_theme_font_size_override("font_size", 200 * EDSCALE);
+	font_preview_label->add_theme_font_override(SceneStringName(font), font_preview);
+	font_preview_label->add_theme_font_size_override(SceneStringName(font_size), 200 * EDSCALE);
 	font_preview_label->queue_redraw();
 }
 
@@ -506,7 +509,7 @@ void DynamicFontImportSettingsDialog::_variation_add() {
 	Ref<DynamicFontImportSettingsData> import_variation_data;
 	import_variation_data.instantiate();
 	import_variation_data->owner = this;
-	ERR_FAIL_NULL(import_variation_data);
+	ERR_FAIL_COND(import_variation_data.is_null());
 
 	for (List<ResourceImporter::ImportOption>::Element *E = options_variations.front(); E; E = E->next()) {
 		import_variation_data->defaults[E->get().option.name] = E->get().default_value;
@@ -526,7 +529,7 @@ void DynamicFontImportSettingsDialog::_variation_selected() {
 	TreeItem *vars_item = vars_list->get_selected();
 	if (vars_item) {
 		Ref<DynamicFontImportSettingsData> import_variation_data = vars_item->get_metadata(0);
-		ERR_FAIL_NULL(import_variation_data);
+		ERR_FAIL_COND(import_variation_data.is_null());
 
 		inspector_vars->edit(import_variation_data.ptr());
 		import_variation_data->notify_property_list_changed();
@@ -585,14 +588,14 @@ void DynamicFontImportSettingsDialog::_variations_validate() {
 	}
 	for (TreeItem *vars_item_a = vars_list_root->get_first_child(); vars_item_a; vars_item_a = vars_item_a->get_next()) {
 		Ref<DynamicFontImportSettingsData> import_variation_data_a = vars_item_a->get_metadata(0);
-		ERR_FAIL_NULL(import_variation_data_a);
+		ERR_FAIL_COND(import_variation_data_a.is_null());
 
 		for (TreeItem *vars_item_b = vars_list_root->get_first_child(); vars_item_b; vars_item_b = vars_item_b->get_next()) {
 			if (vars_item_b != vars_item_a) {
 				bool match = true;
 				for (const KeyValue<StringName, Variant> &E : import_variation_data_a->settings) {
 					Ref<DynamicFontImportSettingsData> import_variation_data_b = vars_item_b->get_metadata(0);
-					ERR_FAIL_NULL(import_variation_data_b);
+					ERR_FAIL_COND(import_variation_data_b.is_null());
 					match = match && (import_variation_data_b->settings[E.key] == E.value);
 				}
 				if (match) {
@@ -641,7 +644,7 @@ void DynamicFontImportSettingsDialog::_change_text_opts() {
 	font_main_text->set_variation_face_index(import_variation_data->get("variation_face_index"));
 	font_main_text->set_variation_transform(import_variation_data->get("variation_transform"));
 
-	text_edit->add_theme_font_override("font", font_main_text);
+	text_edit->add_theme_font_override(SceneStringName(font), font_main_text);
 }
 
 void DynamicFontImportSettingsDialog::_glyph_update_lbl() {
@@ -835,7 +838,7 @@ void DynamicFontImportSettingsDialog::_edit_range(int32_t p_start, int32_t p_end
 		item->set_selectable(col + 1, true);
 
 		item->set_custom_font(col + 1, font_main_big);
-		item->set_custom_font_size(col + 1, get_theme_font_size(SNAME("font_size")) * 2);
+		item->set_custom_font_size(col + 1, get_theme_font_size(SceneStringName(font_size)) * 2);
 
 		col++;
 		if (col == 16) {
@@ -922,12 +925,12 @@ String DynamicFontImportSettingsDialog::_pad_zeros(const String &p_hex) const {
 void DynamicFontImportSettingsDialog::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_READY: {
-			connect("confirmed", callable_mp(this, &DynamicFontImportSettingsDialog::_re_import));
+			connect(SceneStringName(confirmed), callable_mp(this, &DynamicFontImportSettingsDialog::_re_import));
 		} break;
 
 		case NOTIFICATION_THEME_CHANGED: {
 			add_var->set_icon(get_editor_theme_icon(SNAME("Add")));
-			label_warn->add_theme_color_override("font_color", get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
+			label_warn->add_theme_color_override(SceneStringName(font_color), get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
 		} break;
 	}
 }
@@ -938,6 +941,7 @@ void DynamicFontImportSettingsDialog::_re_import() {
 	main_settings["face_index"] = import_settings_data->get("face_index");
 	main_settings["antialiasing"] = import_settings_data->get("antialiasing");
 	main_settings["generate_mipmaps"] = import_settings_data->get("generate_mipmaps");
+	main_settings["disable_embedded_bitmaps"] = import_settings_data->get("disable_embedded_bitmaps");
 	main_settings["multichannel_signed_distance_field"] = import_settings_data->get("multichannel_signed_distance_field");
 	main_settings["msdf_pixel_range"] = import_settings_data->get("msdf_pixel_range");
 	main_settings["msdf_size"] = import_settings_data->get("msdf_size");
@@ -952,7 +956,7 @@ void DynamicFontImportSettingsDialog::_re_import() {
 	Array configurations;
 	for (TreeItem *vars_item = vars_list_root->get_first_child(); vars_item; vars_item = vars_item->get_next()) {
 		Ref<DynamicFontImportSettingsData> import_variation_data = vars_item->get_metadata(0);
-		ERR_FAIL_NULL(import_variation_data);
+		ERR_FAIL_COND(import_variation_data.is_null());
 
 		Dictionary preload_config;
 		preload_config["name"] = vars_item->get_text(0);
@@ -1094,7 +1098,7 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 	font_main->set_data(font_data);
 	font_main->set_multichannel_signed_distance_field(false);
 
-	text_edit->add_theme_font_override("font", font_main);
+	text_edit->add_theme_font_override(SceneStringName(font), font_main);
 
 	base_path = p_path;
 
@@ -1103,7 +1107,7 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 	inspector_general->edit(nullptr);
 
 	text_settings_data.instantiate();
-	ERR_FAIL_NULL(text_settings_data);
+	ERR_FAIL_COND(text_settings_data.is_null());
 
 	text_settings_data->owner = this;
 
@@ -1116,7 +1120,7 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 
 	inspector_text->edit(text_settings_data.ptr());
 
-	int gww = get_theme_font(SNAME("font"))->get_string_size("00000").x + 50;
+	int gww = get_theme_font(SceneStringName(font))->get_string_size("00000").x + 50;
 	glyph_table->set_column_custom_minimum_width(0, gww);
 	glyph_table->clear();
 	vars_list->clear();
@@ -1133,7 +1137,7 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 
 	Ref<ConfigFile> config;
 	config.instantiate();
-	ERR_FAIL_NULL(config);
+	ERR_FAIL_COND(config.is_null());
 
 	Error err = config->load(p_path + ".import");
 	print_verbose("Loading import settings:");
@@ -1165,7 +1169,7 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 
 					Ref<DynamicFontImportSettingsData> import_variation_data_custom;
 					import_variation_data_custom.instantiate();
-					ERR_FAIL_NULL(import_variation_data_custom);
+					ERR_FAIL_COND(import_variation_data_custom.is_null());
 
 					import_variation_data_custom->owner = this;
 					for (List<ResourceImporter::ImportOption>::Element *F = options_variations.front(); F; F = F->next()) {
@@ -1223,8 +1227,8 @@ void DynamicFontImportSettingsDialog::open_settings(const String &p_path) {
 		font_preview->set_subpixel_positioning((TextServer::SubpixelPositioning)import_settings_data->get("subpixel_positioning").operator int());
 		font_preview->set_oversampling(import_settings_data->get("oversampling"));
 	}
-	font_preview_label->add_theme_font_override("font", font_preview);
-	font_preview_label->add_theme_font_size_override("font_size", 200 * EDSCALE);
+	font_preview_label->add_theme_font_override(SceneStringName(font), font_preview);
+	font_preview_label->add_theme_font_size_override(SceneStringName(font_size), 200 * EDSCALE);
 	font_preview_label->queue_redraw();
 
 	_variations_validate();
@@ -1245,6 +1249,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 
 	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::INT, "antialiasing", PROPERTY_HINT_ENUM, "None,Grayscale,LCD Subpixel"), 1));
 	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::BOOL, "generate_mipmaps"), false));
+	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::BOOL, "disable_embedded_bitmaps"), true));
 	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::BOOL, "multichannel_signed_distance_field", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), true));
 	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::INT, "msdf_pixel_range", PROPERTY_HINT_RANGE, "1,100,1"), 8));
 	options_general.push_back(ResourceImporter::ImportOption(PropertyInfo(Variant::INT, "msdf_size", PROPERTY_HINT_RANGE, "1,250,1"), 48));
@@ -1345,6 +1350,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	page2_description->set_text(TTR("Add font size, and variation coordinates, and select glyphs to pre-render:"));
 	page2_description->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	page2_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	page2_description->set_custom_minimum_size(Size2(300 * EDSCALE, 1));
 	page2_vb->add_child(page2_description);
 
 	HSplitContainer *page2_hb = memnew(HSplitContainer);
@@ -1367,9 +1373,10 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	add_var = memnew(Button);
 	add_var->set_tooltip_text(TTR("Add configuration"));
 	page2_hb_vars->add_child(add_var);
-	add_var->connect("pressed", callable_mp(this, &DynamicFontImportSettingsDialog::_variation_add));
+	add_var->connect(SceneStringName(pressed), callable_mp(this, &DynamicFontImportSettingsDialog::_variation_add));
 
 	vars_list = memnew(Tree);
+	vars_list->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 	vars_list->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
 	vars_list->set_hide_root(true);
 	vars_list->set_columns(2);
@@ -1379,7 +1386,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	vars_list->set_column_custom_minimum_width(1, 50 * EDSCALE);
 	vars_list->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	page2_side_vb->add_child(vars_list);
-	vars_list->connect("item_selected", callable_mp(this, &DynamicFontImportSettingsDialog::_variation_selected));
+	vars_list->connect(SceneStringName(item_selected), callable_mp(this, &DynamicFontImportSettingsDialog::_variation_selected));
 	vars_list->connect("button_clicked", callable_mp(this, &DynamicFontImportSettingsDialog::_variation_remove));
 
 	inspector_vars = memnew(EditorInspector);
@@ -1408,7 +1415,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	Button *btn_clear = memnew(Button);
 	btn_clear->set_text(TTR("Clear Glyph List"));
 	gl_hb->add_child(btn_clear);
-	btn_clear->connect("pressed", callable_mp(this, &DynamicFontImportSettingsDialog::_glyph_clear));
+	btn_clear->connect(SceneStringName(pressed), callable_mp(this, &DynamicFontImportSettingsDialog::_glyph_clear));
 
 	VBoxContainer *page2_0_vb = memnew(VBoxContainer);
 	page2_0_vb->set_name(TTR("Glyphs from the Translations"));
@@ -1418,9 +1425,11 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	page2_0_description->set_text(TTR("Select translations to add all required glyphs to pre-render list:"));
 	page2_0_description->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	page2_0_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	page2_0_description->set_custom_minimum_size(Size2(300 * EDSCALE, 1));
 	page2_0_vb->add_child(page2_0_description);
 
 	locale_tree = memnew(Tree);
+	locale_tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 	locale_tree->set_columns(1);
 	locale_tree->set_hide_root(true);
 	locale_tree->set_column_expand(0, true);
@@ -1438,7 +1447,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	btn_fill_locales = memnew(Button);
 	btn_fill_locales->set_text(TTR("Shape all Strings in the Translations and Add Glyphs"));
 	locale_hb->add_child(btn_fill_locales);
-	btn_fill_locales->connect("pressed", callable_mp(this, &DynamicFontImportSettingsDialog::_process_locales));
+	btn_fill_locales->connect(SceneStringName(pressed), callable_mp(this, &DynamicFontImportSettingsDialog::_process_locales));
 
 	// Page 2.1 layout: Text to select glyphs
 	VBoxContainer *page2_1_vb = memnew(VBoxContainer);
@@ -1449,6 +1458,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	page2_1_description->set_text(TTR("Enter a text and select OpenType features to shape and add all required glyphs to pre-render list:"));
 	page2_1_description->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	page2_1_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	page2_1_description->set_custom_minimum_size(Size2(300 * EDSCALE, 1));
 	page2_1_vb->add_child(page2_1_description);
 
 	HSplitContainer *page2_1_hb = memnew(HSplitContainer);
@@ -1475,7 +1485,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	btn_fill = memnew(Button);
 	btn_fill->set_text(TTR("Shape Text and Add Glyphs"));
 	text_hb->add_child(btn_fill);
-	btn_fill->connect("pressed", callable_mp(this, &DynamicFontImportSettingsDialog::_glyph_text_selected));
+	btn_fill->connect(SceneStringName(pressed), callable_mp(this, &DynamicFontImportSettingsDialog::_glyph_text_selected));
 
 	// Page 2.2 layout: Character map
 	VBoxContainer *page2_2_vb = memnew(VBoxContainer);
@@ -1486,6 +1496,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	page2_2_description->set_text(TTR("Add or remove glyphs from the character map to pre-render list:\nNote: Some stylistic alternatives and glyph variants do not have one-to-one correspondence to character, and not shown in this map, use \"Glyphs from the text\" tab to add these."));
 	page2_2_description->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	page2_2_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	page2_2_description->set_custom_minimum_size(Size2(300 * EDSCALE, 1));
 	page2_2_vb->add_child(page2_2_description);
 
 	HSplitContainer *glyphs_split = memnew(HSplitContainer);
@@ -1494,6 +1505,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	page2_2_vb->add_child(glyphs_split);
 
 	glyph_table = memnew(Tree);
+	glyph_table->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 	glyph_table->set_custom_minimum_size(Size2((30 * 16 + 100) * EDSCALE, 0));
 	glyph_table->set_columns(17);
 	glyph_table->set_column_expand(0, false);
@@ -1504,8 +1516,8 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	for (int i = 0; i < 16; i++) {
 		glyph_table->set_column_title(i + 1, String::num_int64(i, 16));
 	}
-	glyph_table->add_theme_style_override("selected", glyph_table->get_theme_stylebox(SNAME("panel")));
-	glyph_table->add_theme_style_override("selected_focus", glyph_table->get_theme_stylebox(SNAME("panel")));
+	glyph_table->add_theme_style_override("selected", glyph_table->get_theme_stylebox(SceneStringName(panel)));
+	glyph_table->add_theme_style_override("selected_focus", glyph_table->get_theme_stylebox(SceneStringName(panel)));
 	glyph_table->add_theme_constant_override("h_separation", 0);
 	glyph_table->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	glyph_table->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -1513,6 +1525,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	glyph_table->connect("item_activated", callable_mp(this, &DynamicFontImportSettingsDialog::_glyph_selected));
 
 	glyph_tree = memnew(Tree);
+	glyph_tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 	glyph_tree->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
 	glyph_tree->set_columns(2);
 	glyph_tree->set_hide_root(true);
@@ -1526,7 +1539,7 @@ DynamicFontImportSettingsDialog::DynamicFontImportSettingsDialog() {
 	}
 	glyphs_split->add_child(glyph_tree);
 	glyph_tree->connect("item_activated", callable_mp(this, &DynamicFontImportSettingsDialog::_range_edited));
-	glyph_tree->connect("item_selected", callable_mp(this, &DynamicFontImportSettingsDialog::_range_selected));
+	glyph_tree->connect(SceneStringName(item_selected), callable_mp(this, &DynamicFontImportSettingsDialog::_range_selected));
 
 	// Common
 

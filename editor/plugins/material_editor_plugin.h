@@ -32,10 +32,10 @@
 #define MATERIAL_EDITOR_PLUGIN_H
 
 #include "editor/editor_inspector.h"
-#include "editor/editor_plugin.h"
+#include "editor/plugins/editor_plugin.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
+#include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/material.h"
-#include "scene/resources/primitive_meshes.h"
 
 class Camera3D;
 class ColorRect;
@@ -45,6 +45,7 @@ class MeshInstance3D;
 class SubViewport;
 class SubViewportContainer;
 class Button;
+class Label;
 
 class MaterialEditor : public Control {
 	GDCLASS(MaterialEditor, Control);
@@ -68,6 +69,10 @@ class MaterialEditor : public Control {
 
 	Ref<SphereMesh> sphere_mesh;
 	Ref<BoxMesh> box_mesh;
+
+	VBoxContainer *layout_error = nullptr;
+	Label *error_label = nullptr;
+	bool is_unsupported_shader_mode = false;
 
 	HBoxContainer *layout_3d = nullptr;
 
@@ -110,7 +115,7 @@ public:
 	virtual bool can_handle(Object *p_object) override;
 	virtual void parse_begin(Object *p_object) override;
 
-	void _undo_redo_inspector_callback(Object *p_undo_redo, Object *p_edited, String p_property, Variant p_new_value);
+	void _undo_redo_inspector_callback(Object *p_undo_redo, Object *p_edited, const String &p_property, const Variant &p_new_value);
 
 	EditorInspectorPluginMaterial();
 };

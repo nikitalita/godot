@@ -155,7 +155,6 @@ Ref<AudioStreamOggVorbis> ResourceImporterOggVorbis::load_from_buffer(const Vect
 			char *sync_buf = ogg_sync_buffer(&sync_state, OGG_SYNC_BUFFER_SIZE);
 			err = ogg_sync_check(&sync_state);
 			ERR_FAIL_COND_V_MSG(err != 0, Ref<AudioStreamOggVorbis>(), "Ogg sync error " + itos(err));
-			ERR_FAIL_COND_V(cursor > size_t(file_data.size()), Ref<AudioStreamOggVorbis>());
 			size_t copy_size = file_data.size() - cursor;
 			if (copy_size > OGG_SYNC_BUFFER_SIZE) {
 				copy_size = OGG_SYNC_BUFFER_SIZE;
@@ -212,11 +211,13 @@ Ref<AudioStreamOggVorbis> ResourceImporterOggVorbis::load_from_buffer(const Vect
 				granule_pos = packet.granulepos;
 			}
 
-			PackedByteArray data;
-			data.resize(packet.bytes);
-			memcpy(data.ptrw(), packet.packet, packet.bytes);
-			sorted_packets[granule_pos].push_back(data);
-			packet_count++;
+			if (packet.bytes > 0) {
+				PackedByteArray data;
+				data.resize(packet.bytes);
+				memcpy(data.ptrw(), packet.packet, packet.bytes);
+				sorted_packets[granule_pos].push_back(data);
+				packet_count++;
+			}
 		}
 		Vector<Vector<uint8_t>> packet_data;
 		for (const KeyValue<uint64_t, Vector<Vector<uint8_t>>> &pair : sorted_packets) {
@@ -224,7 +225,7 @@ Ref<AudioStreamOggVorbis> ResourceImporterOggVorbis::load_from_buffer(const Vect
 				packet_data.push_back(packets);
 			}
 		}
-		if (initialized_stream) {
+		if (initialized_stream && packet_data.size() > 0) {
 			ogg_packet_sequence->push_page(ogg_page_granulepos(&page), packet_data);
 		}
 	}

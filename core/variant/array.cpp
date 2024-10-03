@@ -81,6 +81,22 @@ void Array::_unref() const {
 	_p = nullptr;
 }
 
+Array::Iterator Array::begin() {
+	return Iterator(_p->array.ptrw(), _p->read_only);
+}
+
+Array::Iterator Array::end() {
+	return Iterator(_p->array.ptrw() + _p->array.size(), _p->read_only);
+}
+
+Array::ConstIterator Array::begin() const {
+	return ConstIterator(_p->array.ptr(), _p->read_only);
+}
+
+Array::ConstIterator Array::end() const {
+	return ConstIterator(_p->array.ptr() + _p->array.size(), _p->read_only);
+}
+
 Variant &Array::operator[](int p_idx) {
 	if (unlikely(_p->read_only)) {
 		*_p->read_only = _p->array[p_idx];
@@ -219,7 +235,7 @@ void Array::assign(const Array &p_array) {
 		for (int i = 0; i < size; i++) {
 			const Variant &element = source[i];
 			if (element.get_type() != Variant::NIL && (element.get_type() != Variant::OBJECT || !typed.validate_object(element, "assign"))) {
-				ERR_FAIL_MSG(vformat(R"(Unable to convert array index %i from "%s" to "%s".)", i, Variant::get_type_name(element.get_type()), Variant::get_type_name(typed.type)));
+				ERR_FAIL_MSG(vformat(R"(Unable to convert array index %d from "%s" to "%s".)", i, Variant::get_type_name(element.get_type()), Variant::get_type_name(typed.type)));
 			}
 		}
 		_p->array = p_array._p->array;
@@ -242,11 +258,11 @@ void Array::assign(const Array &p_array) {
 				continue;
 			}
 			if (!Variant::can_convert_strict(value->get_type(), typed.type)) {
-				ERR_FAIL_MSG("Unable to convert array index " + itos(i) + " from '" + Variant::get_type_name(value->get_type()) + "' to '" + Variant::get_type_name(typed.type) + "'.");
+				ERR_FAIL_MSG(vformat(R"(Unable to convert array index %d from "%s" to "%s".)", i, Variant::get_type_name(value->get_type()), Variant::get_type_name(typed.type)));
 			}
 			Callable::CallError ce;
 			Variant::construct(typed.type, data[i], &value, 1, ce);
-			ERR_FAIL_COND_MSG(ce.error, vformat(R"(Unable to convert array index %i from "%s" to "%s".)", i, Variant::get_type_name(value->get_type()), Variant::get_type_name(typed.type)));
+			ERR_FAIL_COND_MSG(ce.error, vformat(R"(Unable to convert array index %d from "%s" to "%s".)", i, Variant::get_type_name(value->get_type()), Variant::get_type_name(typed.type)));
 		}
 	} else if (Variant::can_convert_strict(source_typed.type, typed.type)) {
 		// from primitives to different convertible primitives
@@ -254,7 +270,7 @@ void Array::assign(const Array &p_array) {
 			const Variant *value = source + i;
 			Callable::CallError ce;
 			Variant::construct(typed.type, data[i], &value, 1, ce);
-			ERR_FAIL_COND_MSG(ce.error, vformat(R"(Unable to convert array index %i from "%s" to "%s".)", i, Variant::get_type_name(value->get_type()), Variant::get_type_name(typed.type)));
+			ERR_FAIL_COND_MSG(ce.error, vformat(R"(Unable to convert array index %d from "%s" to "%s".)", i, Variant::get_type_name(value->get_type()), Variant::get_type_name(typed.type)));
 		}
 	} else {
 		ERR_FAIL_MSG(vformat(R"(Cannot assign contents of "Array[%s]" to "Array[%s]".)", Variant::get_type_name(source_typed.type), Variant::get_type_name(typed.type)));
@@ -316,17 +332,17 @@ void Array::erase(const Variant &p_value) {
 }
 
 Variant Array::front() const {
-	ERR_FAIL_COND_V_MSG(_p->array.size() == 0, Variant(), "Can't take value from empty array.");
+	ERR_FAIL_COND_V_MSG(_p->array.is_empty(), Variant(), "Can't take value from empty array.");
 	return operator[](0);
 }
 
 Variant Array::back() const {
-	ERR_FAIL_COND_V_MSG(_p->array.size() == 0, Variant(), "Can't take value from empty array.");
+	ERR_FAIL_COND_V_MSG(_p->array.is_empty(), Variant(), "Can't take value from empty array.");
 	return operator[](_p->array.size() - 1);
 }
 
 Variant Array::pick_random() const {
-	ERR_FAIL_COND_V_MSG(_p->array.size() == 0, Variant(), "Can't take value from empty array.");
+	ERR_FAIL_COND_V_MSG(_p->array.is_empty(), Variant(), "Can't take value from empty array.");
 	return operator[](Math::rand() % _p->array.size());
 }
 
@@ -353,6 +369,34 @@ int Array::find(const Variant &p_value, int p_from) const {
 	return ret;
 }
 
+int Array::find_custom(const Callable &p_callable, int p_from) const {
+	int ret = -1;
+
+	if (p_from < 0 || size() == 0) {
+		return ret;
+	}
+
+	const Variant *argptrs[1];
+
+	for (int i = p_from; i < size(); i++) {
+		const Variant &val = _p->array[i];
+		argptrs[0] = &val;
+		Variant res;
+		Callable::CallError ce;
+		p_callable.callp(argptrs, 1, res, ce);
+		if (unlikely(ce.error != Callable::CallError::CALL_OK)) {
+			ERR_FAIL_V_MSG(ret, "Error calling method from 'find_custom': " + Variant::get_callable_error_text(p_callable, argptrs, 1, ce));
+		}
+
+		ERR_FAIL_COND_V_MSG(res.get_type() != Variant::Type::BOOL, ret, "Error on method from 'find_custom': Return type of callable must be boolean.");
+		if (res.operator bool()) {
+			return i;
+		}
+	}
+
+	return ret;
+}
+
 int Array::rfind(const Variant &p_value, int p_from) const {
 	if (_p->array.size() == 0) {
 		return -1;
@@ -371,6 +415,41 @@ int Array::rfind(const Variant &p_value, int p_from) const {
 
 	for (int i = p_from; i >= 0; i--) {
 		if (StringLikeVariantComparator::compare(_p->array[i], value)) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+int Array::rfind_custom(const Callable &p_callable, int p_from) const {
+	if (_p->array.size() == 0) {
+		return -1;
+	}
+
+	if (p_from < 0) {
+		// Relative offset from the end.
+		p_from = _p->array.size() + p_from;
+	}
+	if (p_from < 0 || p_from >= _p->array.size()) {
+		// Limit to array boundaries.
+		p_from = _p->array.size() - 1;
+	}
+
+	const Variant *argptrs[1];
+
+	for (int i = p_from; i >= 0; i--) {
+		const Variant &val = _p->array[i];
+		argptrs[0] = &val;
+		Variant res;
+		Callable::CallError ce;
+		p_callable.callp(argptrs, 1, res, ce);
+		if (unlikely(ce.error != Callable::CallError::CALL_OK)) {
+			ERR_FAIL_V_MSG(-1, "Error calling method from 'rfind_custom': " + Variant::get_callable_error_text(p_callable, argptrs, 1, ce));
+		}
+
+		ERR_FAIL_COND_V_MSG(res.get_type() != Variant::Type::BOOL, -1, "Error on method from 'rfind_custom': Return type of callable must be boolean.");
+		if (res.operator bool()) {
 			return i;
 		}
 	}
@@ -745,7 +824,7 @@ Variant Array::max() const {
 				return Variant(); //not a valid comparison
 			}
 			if (bool(ret)) {
-				//is less
+				//is greater
 				maxval = test;
 			}
 		}
@@ -787,6 +866,10 @@ bool Array::is_same_typed(const Array &p_other) const {
 	return _p->typed == p_other._p->typed;
 }
 
+bool Array::is_same_instance(const Array &p_other) const {
+	return _p == p_other._p;
+}
+
 uint32_t Array::get_typed_builtin() const {
 	return _p->typed.type;
 }
@@ -797,6 +880,12 @@ StringName Array::get_typed_class_name() const {
 
 Variant Array::get_typed_script() const {
 	return _p->typed.script;
+}
+
+Array Array::create_read_only() {
+	Array array;
+	array.make_read_only();
+	return array;
 }
 
 void Array::make_read_only() {

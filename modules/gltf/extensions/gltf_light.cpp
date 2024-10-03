@@ -51,6 +51,8 @@ void GLTFLight::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_inner_cone_angle", "inner_cone_angle"), &GLTFLight::set_inner_cone_angle);
 	ClassDB::bind_method(D_METHOD("get_outer_cone_angle"), &GLTFLight::get_outer_cone_angle);
 	ClassDB::bind_method(D_METHOD("set_outer_cone_angle", "outer_cone_angle"), &GLTFLight::set_outer_cone_angle);
+	ClassDB::bind_method(D_METHOD("get_additional_data", "extension_name"), &GLTFLight::get_additional_data);
+	ClassDB::bind_method(D_METHOD("set_additional_data", "extension_name", "additional_data"), &GLTFLight::set_additional_data);
 
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "color"), "set_color", "get_color"); // Color
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "intensity"), "set_intensity", "get_intensity"); // float
@@ -168,7 +170,7 @@ Light3D *GLTFLight::to_node() const {
 }
 
 Ref<GLTFLight> GLTFLight::from_dictionary(const Dictionary p_dictionary) {
-	ERR_FAIL_COND_V_MSG(!p_dictionary.has("type"), Ref<GLTFLight>(), "Failed to parse GLTF light, missing required field 'type'.");
+	ERR_FAIL_COND_V_MSG(!p_dictionary.has("type"), Ref<GLTFLight>(), "Failed to parse glTF light, missing required field 'type'.");
 	Ref<GLTFLight> light;
 	light.instantiate();
 	const String &type = p_dictionary["type"];
@@ -179,7 +181,7 @@ Ref<GLTFLight> GLTFLight::from_dictionary(const Dictionary p_dictionary) {
 		if (arr.size() == 3) {
 			light->color = Color(arr[0], arr[1], arr[2]).linear_to_srgb();
 		} else {
-			ERR_PRINT("Error parsing GLTF light: The color must have exactly 3 numbers.");
+			ERR_PRINT("Error parsing glTF light: The color must have exactly 3 numbers.");
 		}
 	}
 	if (p_dictionary.has("intensity")) {
@@ -193,10 +195,10 @@ Ref<GLTFLight> GLTFLight::from_dictionary(const Dictionary p_dictionary) {
 		light->inner_cone_angle = spot["innerConeAngle"];
 		light->outer_cone_angle = spot["outerConeAngle"];
 		if (light->inner_cone_angle >= light->outer_cone_angle) {
-			ERR_PRINT("Error parsing GLTF light: The inner angle must be smaller than the outer angle.");
+			ERR_PRINT("Error parsing glTF light: The inner angle must be smaller than the outer angle.");
 		}
 	} else if (type != "point" && type != "directional") {
-		ERR_PRINT("Error parsing GLTF light: Light type '" + type + "' is unknown.");
+		ERR_PRINT("Error parsing glTF light: Light type '" + type + "' is unknown.");
 	}
 	return light;
 }
@@ -219,4 +221,12 @@ Dictionary GLTFLight::to_dictionary() const {
 	d["intensity"] = intensity;
 	d["range"] = range;
 	return d;
+}
+
+Variant GLTFLight::get_additional_data(const StringName &p_extension_name) {
+	return additional_data[p_extension_name];
+}
+
+void GLTFLight::set_additional_data(const StringName &p_extension_name, Variant p_additional_data) {
+	additional_data[p_extension_name] = p_additional_data;
 }

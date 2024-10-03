@@ -58,6 +58,7 @@ void NavigationServer2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("map_get_obstacles", "map"), &NavigationServer2D::map_get_obstacles);
 
 	ClassDB::bind_method(D_METHOD("map_force_update", "map"), &NavigationServer2D::map_force_update);
+	ClassDB::bind_method(D_METHOD("map_get_iteration_id", "map"), &NavigationServer2D::map_get_iteration_id);
 
 	ClassDB::bind_method(D_METHOD("map_get_random_point", "map", "navigation_layers", "uniformly"), &NavigationServer2D::map_get_random_point);
 
@@ -85,6 +86,7 @@ void NavigationServer2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("region_get_connections_count", "region"), &NavigationServer2D::region_get_connections_count);
 	ClassDB::bind_method(D_METHOD("region_get_connection_pathway_start", "region", "connection"), &NavigationServer2D::region_get_connection_pathway_start);
 	ClassDB::bind_method(D_METHOD("region_get_connection_pathway_end", "region", "connection"), &NavigationServer2D::region_get_connection_pathway_end);
+	ClassDB::bind_method(D_METHOD("region_get_closest_point", "region", "to_point"), &NavigationServer2D::region_get_closest_point);
 	ClassDB::bind_method(D_METHOD("region_get_random_point", "region", "navigation_layers", "uniformly"), &NavigationServer2D::region_get_random_point);
 
 	ClassDB::bind_method(D_METHOD("link_create"), &NavigationServer2D::link_create);
@@ -162,6 +164,12 @@ void NavigationServer2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("parse_source_geometry_data", "navigation_polygon", "source_geometry_data", "root_node", "callback"), &NavigationServer2D::parse_source_geometry_data, DEFVAL(Callable()));
 	ClassDB::bind_method(D_METHOD("bake_from_source_geometry_data", "navigation_polygon", "source_geometry_data", "callback"), &NavigationServer2D::bake_from_source_geometry_data, DEFVAL(Callable()));
 	ClassDB::bind_method(D_METHOD("bake_from_source_geometry_data_async", "navigation_polygon", "source_geometry_data", "callback"), &NavigationServer2D::bake_from_source_geometry_data_async, DEFVAL(Callable()));
+	ClassDB::bind_method(D_METHOD("is_baking_navigation_polygon", "navigation_polygon"), &NavigationServer2D::is_baking_navigation_polygon);
+
+	ClassDB::bind_method(D_METHOD("source_geometry_parser_create"), &NavigationServer2D::source_geometry_parser_create);
+	ClassDB::bind_method(D_METHOD("source_geometry_parser_set_callback", "parser", "callback"), &NavigationServer2D::source_geometry_parser_set_callback);
+
+	ClassDB::bind_method(D_METHOD("simplify_path", "path", "epsilon"), &NavigationServer2D::simplify_path);
 
 	ClassDB::bind_method(D_METHOD("free_rid", "rid"), &NavigationServer2D::free);
 

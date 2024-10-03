@@ -41,6 +41,13 @@
 #include "editor/editor_settings.h"
 #include "servers/rendering/rendering_device_binds.h"
 
+#if defined(VULKAN_ENABLED)
+#include "drivers/vulkan/rendering_context_driver_vulkan.h"
+#endif
+#if defined(METAL_ENABLED)
+#include "drivers/metal/rendering_context_driver_metal.h"
+#endif
+
 //uncomment this if you want to see textures from all the process saved
 //#define DEBUG_TEXTURES
 
@@ -49,7 +56,7 @@ void LightmapperRD::add_mesh(const MeshData &p_mesh) {
 	ERR_FAIL_COND(p_mesh.emission_on_uv2.is_null() || p_mesh.emission_on_uv2->is_empty());
 	ERR_FAIL_COND(p_mesh.albedo_on_uv2->get_width() != p_mesh.emission_on_uv2->get_width());
 	ERR_FAIL_COND(p_mesh.albedo_on_uv2->get_height() != p_mesh.emission_on_uv2->get_height());
-	ERR_FAIL_COND(p_mesh.points.size() == 0);
+	ERR_FAIL_COND(p_mesh.points.is_empty());
 	MeshInstance mi;
 	mi.data = p_mesh;
 	mesh_instances.push_back(mi);
@@ -222,22 +229,21 @@ void LightmapperRD::_sort_triangle_clusters(uint32_t p_cluster_size, uint32_t p_
 	}
 }
 
-Lightmapper::BakeError LightmapperRD::_blit_meshes_into_atlas(int p_max_texture_size, Vector<Ref<Image>> &albedo_images, Vector<Ref<Image>> &emission_images, AABB &bounds, Size2i &atlas_size, int &atlas_slices, BakeStepFunc p_step_function, void *p_bake_userdata) {
+Lightmapper::BakeError LightmapperRD::_blit_meshes_into_atlas(int p_max_texture_size, int p_denoiser_range, Vector<Ref<Image>> &albedo_images, Vector<Ref<Image>> &emission_images, AABB &bounds, Size2i &atlas_size, int &atlas_slices, BakeStepFunc p_step_function, void *p_bake_userdata) {
 	Vector<Size2i> sizes;
 
 	for (int m_i = 0; m_i < mesh_instances.size(); m_i++) {
 		MeshInstance &mi = mesh_instances.write[m_i];
 		Size2i s = Size2i(mi.data.albedo_on_uv2->get_width(), mi.data.albedo_on_uv2->get_height());
 		sizes.push_back(s);
-		atlas_size.width = MAX(atlas_size.width, s.width + 2);
-		atlas_size.height = MAX(atlas_size.height, s.height + 2);
+		atlas_size = atlas_size.max(s + Size2i(2, 2).maxi(p_denoiser_range));
 	}
 
 	int max = nearest_power_of_2_templated(atlas_size.width);
 	max = MAX(max, nearest_power_of_2_templated(atlas_size.height));
 
 	if (max > p_max_texture_size) {
-		return BAKE_ERROR_LIGHTMAP_TOO_SMALL;
+		return BAKE_ERROR_TEXTURE_EXCEEDS_MAX_SIZE;
 	}
 
 	if (p_step_function) {
@@ -251,18 +257,26 @@ Lightmapper::BakeError LightmapperRD::_blit_meshes_into_atlas(int p_max_texture_
 	int best_atlas_memory = 0x7FFFFFFF;
 	Vector<Vector3i> best_atlas_offsets;
 
-	//determine best texture array atlas size by bruteforce fitting
+	// Determine best texture array atlas size by bruteforce fitting.
 	while (atlas_size.x <= p_max_texture_size && atlas_size.y <= p_max_texture_size) {
 		Vector<Vector2i> source_sizes;
 		Vector<int> source_indices;
 		source_sizes.resize(sizes.size());
 		source_indices.resize(sizes.size());
 		for (int i = 0; i < source_indices.size(); i++) {
-			source_sizes.write[i] = sizes[i] + Vector2i(2, 2); // Add padding between lightmaps
+			source_sizes.write[i] = sizes[i] + Vector2i(2, 2).maxi(p_denoiser_range); // Add padding between lightmaps.
 			source_indices.write[i] = i;
 		}
 		Vector<Vector3i> atlas_offsets;
 		atlas_offsets.resize(source_sizes.size());
+
+		// Ensure the sizes can all fit into a single atlas layer.
+		// This should always happen, and this check is only in place to prevent an infinite loop.
+		for (int i = 0; i < source_sizes.size(); i++) {
+			if (source_sizes[i] > atlas_size) {
+				return BAKE_ERROR_ATLAS_TOO_SMALL;
+			}
+		}
 
 		int slices = 0;
 
@@ -425,6 +439,7 @@ void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i 
 					SWAP(edge.a, edge.b);
 					SWAP(edge.na, edge.nb);
 					SWAP(uv2.a, uv2.b);
+					SWAP(uv2.indices.x, uv2.indices.y);
 					SWAP(edge_indices.x, edge_indices.y);
 				}
 
@@ -703,7 +718,7 @@ void LightmapperRD::_raster_geometry(RenderingDevice *rd, Size2i atlas_size, int
 		raster_push_constant.uv_offset[0] = -0.5f / float(atlas_size.x);
 		raster_push_constant.uv_offset[1] = -0.5f / float(atlas_size.y);
 
-		RD::DrawListID draw_list = rd->draw_list_begin(framebuffers[i], RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_STORE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors);
+		RD::DrawListID draw_list = rd->draw_list_begin(framebuffers[i], RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_STORE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors, 1.0, 0, Rect2(), RDD::BreadcrumbMarker::LIGHTMAPPER_PASS);
 		//draw opaque
 		rd->draw_list_bind_render_pipeline(draw_list, raster_pipeline);
 		rd->draw_list_bind_uniform_set(draw_list, raster_base_uniform, 0);
@@ -769,12 +784,41 @@ LightmapperRD::BakeError LightmapperRD::_dilate(RenderingDevice *rd, Ref<RDShade
 
 #ifdef DEBUG_TEXTURES
 	for (int i = 0; i < atlas_slices; i++) {
-		Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
+		Vector<uint8_t> s = rd->texture_get_data(source_light_tex, i);
 		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->convert(Image::FORMAT_RGBA8);
 		img->save_png("res://5_dilated_" + itos(i) + ".png");
 	}
 #endif
+	return BAKE_OK;
+}
+
+LightmapperRD::BakeError LightmapperRD::_pack_l1(RenderingDevice *rd, Ref<RDShaderFile> &compute_shader, RID &compute_base_uniform_set, PushConstant &push_constant, RID &source_light_tex, RID &dest_light_tex, const Size2i &atlas_size, int atlas_slices) {
+	Vector<RD::Uniform> uniforms = dilate_or_denoise_common_uniforms(source_light_tex, dest_light_tex);
+
+	RID compute_shader_pack = rd->shader_create_from_spirv(compute_shader->get_spirv_stages("pack_coeffs"));
+	ERR_FAIL_COND_V(compute_shader_pack.is_null(), BAKE_ERROR_LIGHTMAP_CANT_PRE_BAKE_MESHES); //internal check, should not happen
+	RID compute_shader_pack_pipeline = rd->compute_pipeline_create(compute_shader_pack);
+
+	RID dilate_uniform_set = rd->uniform_set_create(uniforms, compute_shader_pack, 1);
+
+	RD::ComputeListID compute_list = rd->compute_list_begin();
+	rd->compute_list_bind_compute_pipeline(compute_list, compute_shader_pack_pipeline);
+	rd->compute_list_bind_uniform_set(compute_list, compute_base_uniform_set, 0);
+	rd->compute_list_bind_uniform_set(compute_list, dilate_uniform_set, 1);
+	push_constant.region_ofs[0] = 0;
+	push_constant.region_ofs[1] = 0;
+	Vector3i group_size(Math::division_round_up(atlas_size.x, 8), Math::division_round_up(atlas_size.y, 8), 1); //restore group size
+
+	for (int i = 0; i < atlas_slices; i++) {
+		push_constant.atlas_slice = i;
+		rd->compute_list_set_push_constant(compute_list, &push_constant, sizeof(PushConstant));
+		rd->compute_list_dispatch(compute_list, group_size.x, group_size.y, group_size.z);
+		//no barrier, let them run all together
+	}
+	rd->compute_list_end();
+	rd->free(compute_shader_pack);
+
 	return BAKE_OK;
 }
 
@@ -903,7 +947,7 @@ LightmapperRD::BakeError LightmapperRD::_denoise_oidn(RenderingDevice *p_rd, RID
 	return BAKE_OK;
 }
 
-LightmapperRD::BakeError LightmapperRD::_denoise(RenderingDevice *p_rd, Ref<RDShaderFile> &p_compute_shader, const RID &p_compute_base_uniform_set, PushConstant &p_push_constant, RID p_source_light_tex, RID p_source_normal_tex, RID p_dest_light_tex, float p_denoiser_strength, const Size2i &p_atlas_size, int p_atlas_slices, bool p_bake_sh, BakeStepFunc p_step_function) {
+LightmapperRD::BakeError LightmapperRD::_denoise(RenderingDevice *p_rd, Ref<RDShaderFile> &p_compute_shader, const RID &p_compute_base_uniform_set, PushConstant &p_push_constant, RID p_source_light_tex, RID p_source_normal_tex, RID p_dest_light_tex, float p_denoiser_strength, int p_denoiser_range, const Size2i &p_atlas_size, int p_atlas_slices, bool p_bake_sh, BakeStepFunc p_step_function, void *p_bake_userdata) {
 	RID denoise_params_buffer = p_rd->uniform_buffer_create(sizeof(DenoiseParams));
 	DenoiseParams denoise_params;
 	denoise_params.spatial_bandwidth = 5.0f;
@@ -911,6 +955,7 @@ LightmapperRD::BakeError LightmapperRD::_denoise(RenderingDevice *p_rd, Ref<RDSh
 	denoise_params.albedo_bandwidth = 1.0f;
 	denoise_params.normal_bandwidth = 0.1f;
 	denoise_params.filter_strength = 10.0f;
+	denoise_params.half_search_window = p_denoiser_range;
 	p_rd->buffer_update(denoise_params_buffer, 0, sizeof(DenoiseParams), &denoise_params);
 
 	Vector<RD::Uniform> uniforms = dilate_or_denoise_common_uniforms(p_source_light_tex, p_dest_light_tex);
@@ -965,6 +1010,11 @@ LightmapperRD::BakeError LightmapperRD::_denoise(RenderingDevice *p_rd, Ref<RDSh
 				p_rd->sync();
 			}
 		}
+		if (p_step_function) {
+			int percent = (s + 1) * 100 / p_atlas_slices;
+			float p = float(s) / p_atlas_slices * 0.1;
+			p_step_function(0.8 + p, vformat(RTR("Denoising %d%%"), percent), p_bake_userdata, false);
+		}
 	}
 
 	p_rd->free(compute_shader_denoise);
@@ -973,7 +1023,7 @@ LightmapperRD::BakeError LightmapperRD::_denoise(RenderingDevice *p_rd, Ref<RDSh
 	return BAKE_OK;
 }
 
-LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_denoiser, float p_denoiser_strength, int p_bounces, float p_bounce_indirect_energy, float p_bias, int p_max_texture_size, bool p_bake_sh, bool p_texture_for_bounces, GenerateProbes p_generate_probes, const Ref<Image> &p_environment_panorama, const Basis &p_environment_transform, BakeStepFunc p_step_function, void *p_bake_userdata, float p_exposure_normalization) {
+LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_denoiser, float p_denoiser_strength, int p_denoiser_range, int p_bounces, float p_bounce_indirect_energy, float p_bias, int p_max_texture_size, bool p_bake_sh, bool p_texture_for_bounces, GenerateProbes p_generate_probes, const Ref<Image> &p_environment_panorama, const Basis &p_environment_transform, BakeStepFunc p_step_function, void *p_bake_userdata, float p_exposure_normalization) {
 	int denoiser = GLOBAL_GET("rendering/lightmapping/denoising/denoiser");
 	String oidn_path = EDITOR_GET("filesystem/tools/oidn/oidn_denoise_path");
 
@@ -1005,7 +1055,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 	Vector<Ref<Image>> albedo_images;
 	Vector<Ref<Image>> emission_images;
 
-	BakeError bake_error = _blit_meshes_into_atlas(p_max_texture_size, albedo_images, emission_images, bounds, atlas_size, atlas_slices, p_step_function, p_bake_userdata);
+	BakeError bake_error = _blit_meshes_into_atlas(p_max_texture_size, p_denoiser_range, albedo_images, emission_images, bounds, atlas_size, atlas_slices, p_step_function, p_bake_userdata);
 	if (bake_error != BAKE_OK) {
 		return bake_error;
 	}
@@ -1017,7 +1067,41 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 	}
 #endif
 
-	RenderingDevice *rd = RenderingDevice::get_singleton()->create_local_device();
+	// Attempt to create a local device by requesting it from rendering server first.
+	// If that fails because the current renderer is not implemented on top of RD, we fall back to creating
+	// a local rendering device manually depending on the current platform.
+	Error err;
+	RenderingContextDriver *rcd = nullptr;
+	RenderingDevice *rd = RenderingServer::get_singleton()->create_local_rendering_device();
+	if (rd == nullptr) {
+#if defined(RD_ENABLED)
+#if defined(METAL_ENABLED)
+		rcd = memnew(RenderingContextDriverMetal);
+		rd = memnew(RenderingDevice);
+#endif
+#if defined(VULKAN_ENABLED)
+		if (rcd == nullptr) {
+			rcd = memnew(RenderingContextDriverVulkan);
+			rd = memnew(RenderingDevice);
+		}
+#endif
+#endif
+		if (rcd != nullptr && rd != nullptr) {
+			err = rcd->initialize();
+			if (err == OK) {
+				err = rd->initialize(rcd);
+			}
+
+			if (err != OK) {
+				memdelete(rd);
+				memdelete(rcd);
+				rd = nullptr;
+				rcd = nullptr;
+			}
+		}
+	}
+
+	ERR_FAIL_NULL_V(rd, BAKE_ERROR_LIGHTMAP_CANT_PRE_BAKE_MESHES);
 
 	RID albedo_array_tex;
 	RID emission_array_tex;
@@ -1187,7 +1271,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 	//shaders
 	Ref<RDShaderFile> raster_shader;
 	raster_shader.instantiate();
-	Error err = raster_shader->parse_versions_from_text(lm_raster_shader_glsl);
+	err = raster_shader->parse_versions_from_text(lm_raster_shader_glsl);
 	if (err != OK) {
 		raster_shader->print_errors("raster_shader");
 
@@ -1195,6 +1279,10 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		FREE_BUFFERS
 
 		memdelete(rd);
+
+		if (rcd != nullptr) {
+			memdelete(rcd);
+		}
 	}
 	ERR_FAIL_COND_V(err != OK, BAKE_ERROR_LIGHTMAP_CANT_PRE_BAKE_MESHES);
 
@@ -1367,6 +1455,11 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		FREE_BUFFERS
 		FREE_RASTER_RESOURCES
 		memdelete(rd);
+
+		if (rcd != nullptr) {
+			memdelete(rcd);
+		}
+
 		compute_shader->print_errors("compute_shader");
 	}
 	ERR_FAIL_COND_V(err != OK, BAKE_ERROR_LIGHTMAP_CANT_PRE_BAKE_MESHES);
@@ -1531,12 +1624,17 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->save_exr("res://2_light_primary_" + itos(i) + ".exr", false);
 	}
+
+	if (p_bake_sh) {
+		for (int i = 0; i < atlas_slices * 4; i++) {
+			Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
+			Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+			img->save_exr("res://2_light_primary_accum_" + itos(i) + ".exr", false);
+		}
+	}
 #endif
 
 	/* SECONDARY (indirect) LIGHT PASS(ES) */
-	if (p_step_function) {
-		p_step_function(0.6, RTR("Integrate indirect lighting"), p_bake_userdata, true);
-	}
 
 	if (p_bounces > 0) {
 		Vector<RD::Uniform> uniforms;
@@ -1600,6 +1698,10 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		rd->submit();
 		rd->sync();
 
+		if (p_step_function) {
+			p_step_function(0.6, RTR("Integrate indirect lighting"), p_bake_userdata, true);
+		}
+
 		int count = 0;
 		for (int s = 0; s < atlas_slices; s++) {
 			push_constant.atlas_slice = s;
@@ -1652,7 +1754,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		light_probe_buffer = rd->storage_buffer_create(sizeof(float) * 4 * 9 * probe_positions.size());
 
 		if (p_step_function) {
-			p_step_function(0.7, RTR("Baking lightprobes"), p_bake_userdata, true);
+			p_step_function(0.7, RTR("Baking light probes"), p_bake_userdata, true);
 		}
 
 		Vector<RD::Uniform> uniforms;
@@ -1711,7 +1813,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 			push_constant.ray_from = i * max_rays;
 			push_constant.ray_to = MIN((i + 1) * max_rays, int32_t(push_constant.ray_count));
 			rd->compute_list_set_push_constant(compute_list, &push_constant, sizeof(PushConstant));
-			rd->compute_list_dispatch(compute_list, Math::division_round_up(probe_positions.size(), 64), 1, 1);
+			rd->compute_list_dispatch(compute_list, Math::division_round_up((int)probe_positions.size(), 64), 1, 1);
 
 			rd->compute_list_end(); //done
 			rd->submit();
@@ -1753,7 +1855,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 			} else {
 				// JNLM (built-in).
 				SWAP(light_accum_tex, light_accum_tex2);
-				error = _denoise(rd, compute_shader, compute_base_uniform_set, push_constant, light_accum_tex2, normal_tex, light_accum_tex, p_denoiser_strength, atlas_size, atlas_slices, p_bake_sh, p_step_function);
+				error = _denoise(rd, compute_shader, compute_base_uniform_set, push_constant, light_accum_tex2, normal_tex, light_accum_tex, p_denoiser_strength, p_denoiser_range, atlas_size, atlas_slices, p_bake_sh, p_step_function, p_bake_userdata);
 			}
 			if (unlikely(error != BAKE_OK)) {
 				return error;
@@ -1789,6 +1891,11 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		FREE_RASTER_RESOURCES
 		FREE_COMPUTE_RESOURCES
 		memdelete(rd);
+
+		if (rcd != nullptr) {
+			memdelete(rcd);
+		}
+
 		blendseams_shader->print_errors("blendseams_shader");
 	}
 	ERR_FAIL_COND_V(err != OK, BAKE_ERROR_LIGHTMAP_CANT_PRE_BAKE_MESHES);
@@ -1863,7 +1970,8 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 				seams_push_constant.slice = uint32_t(i * subslices + k);
 				seams_push_constant.debug = debug;
 
-				RD::DrawListID draw_list = rd->draw_list_begin(framebuffers[i], RD::INITIAL_ACTION_LOAD, RD::FINAL_ACTION_STORE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors);
+				// Store the current subslice in the breadcrumb.
+				RD::DrawListID draw_list = rd->draw_list_begin(framebuffers[i * subslices + k], RD::INITIAL_ACTION_LOAD, RD::FINAL_ACTION_STORE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors, 1.0, 0, Rect2(), RDD::BreadcrumbMarker::LIGHTMAPPER_PASS | seams_push_constant.slice);
 
 				rd->draw_list_bind_uniform_set(draw_list, raster_base_uniform, 0);
 				rd->draw_list_bind_uniform_set(draw_list, blendseams_raster_uniform, 1);
@@ -1923,6 +2031,14 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		}
 	}
 
+	if (p_bake_sh) {
+		SWAP(light_accum_tex, light_accum_tex2);
+		BakeError error = _pack_l1(rd, compute_shader, compute_base_uniform_set, push_constant, light_accum_tex2, light_accum_tex, atlas_size, atlas_slices);
+		if (unlikely(error != BAKE_OK)) {
+			return error;
+		}
+	}
+
 #ifdef DEBUG_TEXTURES
 
 	for (int i = 0; i < atlas_slices * (p_bake_sh ? 4 : 1); i++) {
@@ -1964,6 +2080,10 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	memdelete(rd);
 
+	if (rcd != nullptr) {
+		memdelete(rcd);
+	}
+
 	return BAKE_OK;
 }
 
@@ -1986,7 +2106,7 @@ Variant LightmapperRD::get_bake_mesh_userdata(int p_index) const {
 }
 
 Rect2 LightmapperRD::get_bake_mesh_uv_scale(int p_index) const {
-	ERR_FAIL_COND_V(bake_textures.size() == 0, Rect2());
+	ERR_FAIL_COND_V(bake_textures.is_empty(), Rect2());
 	Rect2 uv_ofs;
 	Vector2 atlas_size = Vector2(bake_textures[0]->get_width(), bake_textures[0]->get_height());
 	uv_ofs.position = Vector2(mesh_instances[p_index].offset) / atlas_size;

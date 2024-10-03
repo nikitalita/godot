@@ -72,6 +72,9 @@ class EditorSpinSlider : public Range {
 	bool hide_slider = false;
 	bool flat = false;
 
+	void _grab_start();
+	void _grab_end();
+
 	void _grabber_gui_input(const Ref<InputEvent> &p_event);
 	void _value_input_closed();
 	void _value_input_submitted(const String &);
@@ -84,6 +87,11 @@ class EditorSpinSlider : public Range {
 	void _ensure_input_popup();
 	void _draw_spin_slider();
 
+	struct ThemeCache {
+		Ref<Texture2D> updown_icon;
+		Ref<Texture2D> updown_disabled_icon;
+	} theme_cache;
+
 protected:
 	void _notification(int p_what);
 	virtual void gui_input(const Ref<InputEvent> &p_event) override;
@@ -93,6 +101,8 @@ protected:
 	void _focus_entered();
 
 public:
+	virtual bool is_text_field() const override;
+
 	String get_tooltip(const Point2 &p_pos) const override;
 
 	String get_text_value() const;

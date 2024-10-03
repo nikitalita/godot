@@ -86,10 +86,9 @@ public:
 		time += frame_step;
 	}
 
-	void prepare_for_blitting_render_targets() override {}
 	void blit_render_targets_to_screen(int p_screen, const BlitToScreen *p_render_targets, int p_amount) override {}
 
-	void end_viewport(bool p_swap_buffers) override {}
+	void gl_end_frame(bool p_swap_buffers) override {}
 
 	void end_frame(bool p_swap_buffers) override {
 		if (p_swap_buffers) {
@@ -105,12 +104,13 @@ public:
 
 	static void make_current() {
 		_create_func = _create_current;
-		low_end = true;
+		low_end = false;
 	}
 
 	uint64_t get_frame_number() const override { return frame; }
 	double get_frame_delta_time() const override { return delta; }
 	double get_total_time() const override { return time; }
+	bool can_create_resources_async() const override { return false; }
 
 	RasterizerDummy() {}
 	~RasterizerDummy() {}

@@ -34,8 +34,10 @@
 #include "core/templates/pair.h"
 #include "scene/resources/surface_tool.h"
 
-#include "scene/resources/concave_polygon_shape_3d.h"
-#include "scene/resources/convex_polygon_shape_3d.h"
+#ifndef _3D_DISABLED
+#include "scene/resources/3d/concave_polygon_shape_3d.h"
+#include "scene/resources/3d/convex_polygon_shape_3d.h"
+#endif // _3D_DISABLED
 
 void MeshConvexDecompositionSettings::set_max_concavity(real_t p_max_concavity) {
 	max_concavity = CLAMP(p_max_concavity, 0.001, 1.0);
@@ -203,81 +205,81 @@ Mesh::ConvexDecompositionFunc Mesh::convex_decomposition_function = nullptr;
 
 int Mesh::get_surface_count() const {
 	int ret = 0;
-	GDVIRTUAL_REQUIRED_CALL(_get_surface_count, ret);
+	GDVIRTUAL_CALL(_get_surface_count, ret);
 	return ret;
 }
 
 int Mesh::surface_get_array_len(int p_idx) const {
 	int ret = 0;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_array_len, p_idx, ret);
+	GDVIRTUAL_CALL(_surface_get_array_len, p_idx, ret);
 	return ret;
 }
 
 int Mesh::surface_get_array_index_len(int p_idx) const {
 	int ret = 0;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_array_index_len, p_idx, ret);
+	GDVIRTUAL_CALL(_surface_get_array_index_len, p_idx, ret);
 	return ret;
 }
 
 Array Mesh::surface_get_arrays(int p_surface) const {
 	Array ret;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_arrays, p_surface, ret);
+	GDVIRTUAL_CALL(_surface_get_arrays, p_surface, ret);
 	return ret;
 }
 
 TypedArray<Array> Mesh::surface_get_blend_shape_arrays(int p_surface) const {
 	TypedArray<Array> ret;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_blend_shape_arrays, p_surface, ret);
+	GDVIRTUAL_CALL(_surface_get_blend_shape_arrays, p_surface, ret);
 	return ret;
 }
 
 Dictionary Mesh::surface_get_lods(int p_surface) const {
 	Dictionary ret;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_lods, p_surface, ret);
+	GDVIRTUAL_CALL(_surface_get_lods, p_surface, ret);
 	return ret;
 }
 
 BitField<Mesh::ArrayFormat> Mesh::surface_get_format(int p_idx) const {
 	uint32_t ret = 0;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_format, p_idx, ret);
+	GDVIRTUAL_CALL(_surface_get_format, p_idx, ret);
 	return ret;
 }
 
 Mesh::PrimitiveType Mesh::surface_get_primitive_type(int p_idx) const {
 	uint32_t ret = PRIMITIVE_MAX;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_primitive_type, p_idx, ret);
+	GDVIRTUAL_CALL(_surface_get_primitive_type, p_idx, ret);
 	return (Mesh::PrimitiveType)ret;
 }
 
 void Mesh::surface_set_material(int p_idx, const Ref<Material> &p_material) {
-	GDVIRTUAL_REQUIRED_CALL(_surface_set_material, p_idx, p_material);
+	GDVIRTUAL_CALL(_surface_set_material, p_idx, p_material);
 }
 
 Ref<Material> Mesh::surface_get_material(int p_idx) const {
 	Ref<Material> ret;
-	GDVIRTUAL_REQUIRED_CALL(_surface_get_material, p_idx, ret);
+	GDVIRTUAL_CALL(_surface_get_material, p_idx, ret);
 	return ret;
 }
 
 int Mesh::get_blend_shape_count() const {
 	int ret = 0;
-	GDVIRTUAL_REQUIRED_CALL(_get_blend_shape_count, ret);
+	GDVIRTUAL_CALL(_get_blend_shape_count, ret);
 	return ret;
 }
 
 StringName Mesh::get_blend_shape_name(int p_index) const {
 	StringName ret;
-	GDVIRTUAL_REQUIRED_CALL(_get_blend_shape_name, p_index, ret);
+	GDVIRTUAL_CALL(_get_blend_shape_name, p_index, ret);
 	return ret;
 }
 
 void Mesh::set_blend_shape_name(int p_index, const StringName &p_name) {
-	GDVIRTUAL_REQUIRED_CALL(_set_blend_shape_name, p_index, p_name);
+	GDVIRTUAL_CALL(_set_blend_shape_name, p_index, p_name);
 }
 
 AABB Mesh::get_aabb() const {
 	AABB ret;
-	GDVIRTUAL_REQUIRED_CALL(_get_aabb, ret);
+	GDVIRTUAL_CALL(_get_aabb, ret);
 	return ret;
 }
 
@@ -519,6 +521,7 @@ Vector<Face3> Mesh::get_surface_faces(int p_surface) const {
 	return Vector<Face3>();
 }
 
+#ifndef _3D_DISABLED
 Ref<ConvexPolygonShape3D> Mesh::create_convex_shape(bool p_clean, bool p_simplify) const {
 	if (p_simplify) {
 		Ref<MeshConvexDecompositionSettings> settings = Ref<MeshConvexDecompositionSettings>();
@@ -578,6 +581,7 @@ Ref<ConcavePolygonShape3D> Mesh::create_trimesh_shape() const {
 	shape->set_faces(face_points);
 	return shape;
 }
+#endif // _3D_DISABLED
 
 Ref<Mesh> Mesh::create_outline(float p_margin) const {
 	Array arrays;
@@ -896,6 +900,7 @@ void Mesh::clear_cache() const {
 	debug_lines.clear();
 }
 
+#ifndef _3D_DISABLED
 Vector<Ref<Shape3D>> Mesh::convex_decompose(const Ref<MeshConvexDecompositionSettings> &p_settings) const {
 	ERR_FAIL_NULL_V(convex_decomposition_function, Vector<Ref<Shape3D>>());
 
@@ -932,6 +937,7 @@ Vector<Ref<Shape3D>> Mesh::convex_decompose(const Ref<MeshConvexDecompositionSet
 
 	return ret;
 }
+#endif // _3D_DISABLED
 
 int Mesh::get_builtin_bind_pose_count() const {
 	return 0;
@@ -1558,6 +1564,7 @@ void ArrayMesh::_create_if_empty() const {
 		mesh = RS::get_singleton()->mesh_create();
 		RS::get_singleton()->mesh_set_blend_shape_mode(mesh, (RS::BlendShapeMode)blend_shape_mode);
 		RS::get_singleton()->mesh_set_blend_shape_count(mesh, blend_shapes.size());
+		RS::get_singleton()->mesh_set_path(mesh, get_path());
 	}
 }
 
@@ -1666,6 +1673,7 @@ void ArrayMesh::_set_surfaces(const Array &p_surfaces) {
 		// we can create it with a single call, which is a lot more efficient and thread friendly
 		mesh = RS::get_singleton()->mesh_create_from_surfaces(surface_data, blend_shapes.size());
 		RS::get_singleton()->mesh_set_blend_shape_mode(mesh, (RS::BlendShapeMode)blend_shape_mode);
+		RS::get_singleton()->mesh_set_path(mesh, get_path());
 	}
 
 	surfaces.clear();
@@ -1872,7 +1880,7 @@ void ArrayMesh::set_blend_shape_name(int p_index, const StringName &p_name) {
 		do {
 			shape_name = String(p_name) + " " + itos(count);
 			count++;
-		} while (blend_shapes.find(shape_name) != -1);
+		} while (blend_shapes.has(shape_name));
 	}
 
 	blend_shapes.write[p_index] = shape_name;
@@ -2078,7 +2086,7 @@ Error ArrayMesh::lightmap_unwrap_cached(const Transform3D &p_base_transform, flo
 
 		Array arrays = surface_get_arrays(i);
 		s.material = surface_get_material(i);
-		SurfaceTool::create_vertex_array_from_triangle_arrays(arrays, s.vertices, &s.format);
+		SurfaceTool::create_vertex_array_from_arrays(arrays, s.vertices, &s.format);
 
 		PackedVector3Array rvertices = arrays[Mesh::ARRAY_VERTEX];
 		int vc = rvertices.size();
@@ -2243,6 +2251,7 @@ Error ArrayMesh::lightmap_unwrap_cached(const Transform3D &p_base_transform, flo
 }
 
 void ArrayMesh::set_shadow_mesh(const Ref<ArrayMesh> &p_mesh) {
+	ERR_FAIL_COND_MSG(p_mesh == this, "Cannot set a mesh as its own shadow mesh.");
 	shadow_mesh = p_mesh;
 	if (shadow_mesh.is_valid()) {
 		RS::get_singleton()->mesh_set_shadow_mesh(mesh, shadow_mesh->get_rid());
@@ -2276,8 +2285,10 @@ void ArrayMesh::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("surface_find_by_name", "name"), &ArrayMesh::surface_find_by_name);
 	ClassDB::bind_method(D_METHOD("surface_set_name", "surf_idx", "name"), &ArrayMesh::surface_set_name);
 	ClassDB::bind_method(D_METHOD("surface_get_name", "surf_idx"), &ArrayMesh::surface_get_name);
+#ifndef _3D_DISABLED
 	ClassDB::bind_method(D_METHOD("create_trimesh_shape"), &ArrayMesh::create_trimesh_shape);
 	ClassDB::bind_method(D_METHOD("create_convex_shape", "clean", "simplify"), &ArrayMesh::create_convex_shape, DEFVAL(true), DEFVAL(false));
+#endif // _3D_DISABLED
 	ClassDB::bind_method(D_METHOD("create_outline", "margin"), &ArrayMesh::create_outline);
 	ClassDB::bind_method(D_METHOD("regen_normal_maps"), &ArrayMesh::regen_normal_maps);
 	ClassDB::set_method_flags(get_class_static(), _scs_create("regen_normal_maps"), METHOD_FLAGS_DEFAULT | METHOD_FLAG_EDITOR);

@@ -36,7 +36,7 @@
 
 static HashMap<String, Vector<uint8_t>> *files = nullptr;
 
-void FileAccessMemory::register_file(String p_name, Vector<uint8_t> p_data) {
+void FileAccessMemory::register_file(const String &p_name, const Vector<uint8_t> &p_data) {
 	if (!files) {
 		files = memnew((HashMap<String, Vector<uint8_t>>));
 	}
@@ -119,17 +119,7 @@ uint64_t FileAccessMemory::get_length() const {
 }
 
 bool FileAccessMemory::eof_reached() const {
-	return pos > length;
-}
-
-uint8_t FileAccessMemory::get_8() const {
-	uint8_t ret = 0;
-	if (pos < length) {
-		ret = data[pos];
-	}
-	++pos;
-
-	return ret;
+	return pos >= length;
 }
 
 uint64_t FileAccessMemory::get_buffer(uint8_t *p_dst, uint64_t p_length) const {
@@ -157,16 +147,12 @@ void FileAccessMemory::flush() {
 	ERR_FAIL_NULL(data);
 }
 
-void FileAccessMemory::store_8(uint8_t p_byte) {
-	ERR_FAIL_NULL(data);
-	ERR_FAIL_COND(pos >= length);
-	data[pos++] = p_byte;
-}
-
 void FileAccessMemory::store_buffer(const uint8_t *p_src, uint64_t p_length) {
 	ERR_FAIL_COND(!p_src && p_length > 0);
+
 	uint64_t left = length - pos;
 	uint64_t write = MIN(p_length, left);
+
 	if (write < p_length) {
 		WARN_PRINT("Writing less data than requested");
 	}

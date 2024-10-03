@@ -527,6 +527,7 @@ FSR2Effect::FSR2Effect() {
 			"\n#define FFX_GLSL 1\n"
 			"\n#define FFX_FSR2_OPTION_LOW_RESOLUTION_MOTION_VECTORS 1\n"
 			"\n#define FFX_FSR2_OPTION_HDR_COLOR_INPUT 1\n"
+			"\n#define FFX_FSR2_OPTION_INVERTED_DEPTH 1\n"
 			"\n#define FFX_FSR2_OPTION_GODOT_REACTIVE_MASK_CLAMP 1\n"
 			"\n#define FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS 1\n";
 
@@ -799,16 +800,13 @@ FSR2Effect::~FSR2Effect() {
 	RD::get_singleton()->free(device.linear_clamp_sampler);
 
 	for (uint32_t i = 0; i < FFX_FSR2_PASS_COUNT; i++) {
-		if (device.passes[i].pipeline.pipeline_rid.is_valid()) {
-			RD::get_singleton()->free(device.passes[i].pipeline.pipeline_rid);
-		}
 		device.passes[i].shader->version_free(device.passes[i].shader_version);
 	}
 }
 
 FSR2Context *FSR2Effect::create_context(Size2i p_internal_size, Size2i p_target_size) {
 	FSR2Context *context = memnew(RendererRD::FSR2Context);
-	context->fsr_desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE;
+	context->fsr_desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED;
 	context->fsr_desc.maxRenderSize.width = p_internal_size.x;
 	context->fsr_desc.maxRenderSize.height = p_internal_size.y;
 	context->fsr_desc.displaySize.width = p_target_size.x;

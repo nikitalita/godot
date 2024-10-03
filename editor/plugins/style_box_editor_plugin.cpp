@@ -30,7 +30,7 @@
 
 #include "style_box_editor_plugin.h"
 
-#include "editor/editor_scale.h"
+#include "editor/themes/editor_scale.h"
 #include "scene/gui/button.h"
 #include "scene/resources/style_box_texture.h"
 
@@ -113,7 +113,7 @@ StyleBoxPreview::StyleBoxPreview() {
 	// This theme variation works better than the normal theme because there's no focus highlight.
 	grid_preview->set_theme_type_variation("PreviewLightButton");
 	grid_preview->set_toggle_mode(true);
-	grid_preview->connect("toggled", callable_mp(this, &StyleBoxPreview::_grid_preview_toggled));
+	grid_preview->connect(SceneStringName(toggled), callable_mp(this, &StyleBoxPreview::_grid_preview_toggled));
 	grid_preview->set_pressed(grid_preview_enabled);
 	add_child(grid_preview);
 }

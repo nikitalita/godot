@@ -82,6 +82,17 @@ int Engine::get_audio_output_latency() const {
 	return _audio_output_latency;
 }
 
+void Engine::increment_frames_drawn() {
+	if (frame_server_synced) {
+		server_syncs++;
+	} else {
+		server_syncs = 0;
+	}
+	frame_server_synced = false;
+
+	frames_drawn++;
+}
+
 uint64_t Engine::get_frames_drawn() {
 	return frames_drawn;
 }
@@ -110,10 +121,11 @@ Dictionary Engine::get_version_info() const {
 	dict["hex"] = VERSION_HEX;
 	dict["status"] = VERSION_STATUS;
 	dict["build"] = VERSION_BUILD;
-	dict["year"] = VERSION_YEAR;
 
 	String hash = String(VERSION_HASH);
 	dict["hash"] = hash.is_empty() ? String("unknown") : hash;
+
+	dict["timestamp"] = VERSION_TIMESTAMP;
 
 	String stringver = String(dict["major"]) + "." + String(dict["minor"]);
 	if ((int)dict["patch"] != 0) {
@@ -251,12 +263,36 @@ bool Engine::is_generate_spirv_debug_info_enabled() const {
 	return generate_spirv_debug_info;
 }
 
+bool Engine::is_extra_gpu_memory_tracking_enabled() const {
+	return extra_gpu_memory_tracking;
+}
+
+void Engine::set_print_to_stdout(bool p_enabled) {
+	CoreGlobals::print_line_enabled = p_enabled;
+}
+
+bool Engine::is_printing_to_stdout() const {
+	return CoreGlobals::print_line_enabled;
+}
+
 void Engine::set_print_error_messages(bool p_enabled) {
 	CoreGlobals::print_error_enabled = p_enabled;
 }
 
 bool Engine::is_printing_error_messages() const {
 	return CoreGlobals::print_error_enabled;
+}
+
+void Engine::print_header(const String &p_string) const {
+	if (_print_header) {
+		print_line(p_string);
+	}
+}
+
+void Engine::print_header_rich(const String &p_string) const {
+	if (_print_header) {
+		print_line_rich(p_string);
+	}
 }
 
 void Engine::add_singleton(const Singleton &p_singleton) {
@@ -351,8 +387,19 @@ Engine *Engine::get_singleton() {
 	return singleton;
 }
 
+bool Engine::notify_frame_server_synced() {
+	frame_server_synced = true;
+	return server_syncs > SERVER_SYNC_FRAME_COUNT_WARNING;
+}
+
 Engine::Engine() {
 	singleton = this;
+}
+
+Engine::~Engine() {
+	if (singleton == this) {
+		singleton = nullptr;
+	}
 }
 
 Engine::Singleton::Singleton(const StringName &p_name, Object *p_ptr, const StringName &p_class_name) :

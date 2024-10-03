@@ -73,6 +73,13 @@
 				[b]Note:[/b] The returned value is unreliable if called right after modifying the [ItemList], before it redraws in the next frame.
 			</description>
 		</method>
+		<method name="get_item_auto_translate_mode" qualifiers="const">
+			<return type="int" enum="Node.AutoTranslateMode" />
+			<param index="0" name="idx" type="int" />
+			<description>
+				Returns item's auto translate mode.
+			</description>
+		</method>
 		<method name="get_item_custom_bg_color" qualifiers="const">
 			<return type="Color" />
 			<param index="0" name="idx" type="int" />
@@ -228,6 +235,15 @@
 			<description>
 				Select the item at the specified index.
 				[b]Note:[/b] This method does not trigger the item selection signal.
+			</description>
+		</method>
+		<method name="set_item_auto_translate_mode">
+			<return type="void" />
+			<param index="0" name="idx" type="int" />
+			<param index="1" name="mode" type="int" enum="Node.AutoTranslateMode" />
+			<description>
+				Sets the auto translate mode of the item associated with the specified index.
+				Items use [constant Node.AUTO_TRANSLATE_MODE_INHERIT] by default, which uses the same auto translate mode as the [ItemList] itself.
 			</description>
 		</method>
 		<method name="set_item_custom_bg_color">
@@ -407,13 +423,14 @@
 			<param index="0" name="at_position" type="Vector2" />
 			<param index="1" name="mouse_button_index" type="int" />
 			<description>
-				Triggered when any mouse click is issued within the rect of the list but on empty space.
+				Emitted when any mouse click is issued within the rect of the list but on empty space.
+				[param at_position] is the click position in this control's local coordinate system.
 			</description>
 		</signal>
 		<signal name="item_activated">
 			<param index="0" name="index" type="int" />
 			<description>
-				Triggered when specified list item is activated via double-clicking or by pressing [kbd]Enter[/kbd].
+				Emitted when specified list item is activated via double-clicking or by pressing [kbd]Enter[/kbd].
 			</description>
 		</signal>
 		<signal name="item_clicked">
@@ -421,14 +438,14 @@
 			<param index="1" name="at_position" type="Vector2" />
 			<param index="2" name="mouse_button_index" type="int" />
 			<description>
-				Triggered when specified list item has been clicked with any mouse button.
-				The click position is also provided to allow appropriate popup of context menus at the correct location.
+				Emitted when specified list item has been clicked with any mouse button.
+				[param at_position] is the click position in this control's local coordinate system.
 			</description>
 		</signal>
 		<signal name="item_selected">
 			<param index="0" name="index" type="int" />
 			<description>
-				Triggered when specified item has been selected.
+				Emitted when specified item has been selected. Only applicable in single selection mode.
 				[member allow_reselect] must be enabled to reselect an item.
 			</description>
 		</signal>
@@ -436,7 +453,7 @@
 			<param index="0" name="index" type="int" />
 			<param index="1" name="selected" type="bool" />
 			<description>
-				Triggered when a multiple selection is altered on a list allowing multiple selection.
+				Emitted when a multiple selection is altered on a list allowing multiple selection.
 			</description>
 		</signal>
 	</signals>
@@ -461,7 +478,7 @@
 		<theme_item name="font_hovered_color" data_type="color" type="Color" default="Color(0.95, 0.95, 0.95, 1)">
 			Text [Color] used when the item is hovered and not selected yet.
 		</theme_item>
-		<theme_item name="font_outline_color" data_type="color" type="Color" default="Color(1, 1, 1, 1)">
+		<theme_item name="font_outline_color" data_type="color" type="Color" default="Color(0, 0, 0, 1)">
 			The tint of text outline of the item.
 		</theme_item>
 		<theme_item name="font_selected_color" data_type="color" type="Color" default="Color(1, 1, 1, 1)">
@@ -483,7 +500,7 @@
 			The size of the item text outline.
 			[b]Note:[/b] If using a font with [member FontFile.multichannel_signed_distance_field] enabled, its [member FontFile.msdf_pixel_range] must be set to at least [i]twice[/i] the value of [theme_item outline_size] for outline rendering to look correct. Otherwise, the outline may appear to be cut off earlier than intended.
 		</theme_item>
-		<theme_item name="v_separation" data_type="constant" type="int" default="2">
+		<theme_item name="v_separation" data_type="constant" type="int" default="4">
 			The vertical spacing between items.
 		</theme_item>
 		<theme_item name="font" data_type="font" type="Font">

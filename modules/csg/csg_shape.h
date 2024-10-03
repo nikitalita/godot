@@ -35,7 +35,7 @@
 
 #include "scene/3d/path_3d.h"
 #include "scene/3d/visual_instance_3d.h"
-#include "scene/resources/concave_polygon_shape_3d.h"
+#include "scene/resources/3d/concave_polygon_shape_3d.h"
 
 #include "thirdparty/misc/mikktspace.h"
 
@@ -113,6 +113,7 @@ private:
 	void _update_debug_collision_shape();
 	void _clear_debug_collision_shape();
 	void _on_transform_changed();
+	Vector<Vector3> _get_brush_collision_faces();
 
 protected:
 	void _notification(int p_what);
@@ -161,6 +162,10 @@ public:
 	bool is_calculating_tangents() const;
 
 	bool is_root_shape() const;
+
+	Ref<ArrayMesh> bake_static_mesh();
+	Ref<ConcavePolygonShape3D> bake_collision_shape();
+
 	CSGShape3D();
 	~CSGShape3D();
 };

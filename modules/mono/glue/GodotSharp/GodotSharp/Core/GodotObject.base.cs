@@ -10,8 +10,8 @@ namespace Godot
 {
     public partial class GodotObject : IDisposable
     {
-        private bool _disposed = false;
-        private static readonly Type CachedType = typeof(GodotObject);
+        private bool _disposed;
+        private static readonly Type _cachedType = typeof(GodotObject);
 
         internal IntPtr NativePtr;
         private bool _memoryOwn;
@@ -25,12 +25,23 @@ namespace Godot
         {
             unsafe
             {
-                _ConstructAndInitialize(NativeCtor, NativeName, CachedType, refCounted: false);
+                ConstructAndInitialize(NativeCtor, NativeName, _cachedType, refCounted: false);
             }
         }
 
-        internal unsafe void _ConstructAndInitialize(
-            delegate* unmanaged<IntPtr> nativeCtor,
+        internal GodotObject(IntPtr nativePtr) : this(false)
+        {
+            // NativePtr must be non-zero before calling ConstructAndInitialize to avoid invoking the constructor NativeCtor.
+            // We don't want to invoke the constructor, because we already have a constructed instance in nativePtr.
+            NativePtr = nativePtr;
+            unsafe
+            {
+                ConstructAndInitialize(NativeCtor, NativeName, _cachedType, refCounted: false);
+            }
+        }
+
+        internal unsafe void ConstructAndInitialize(
+            delegate* unmanaged<godot_bool, IntPtr> nativeCtor,
             StringName nativeName,
             Type cachedType,
             bool refCounted
@@ -38,7 +49,10 @@ namespace Godot
         {
             if (NativePtr == IntPtr.Zero)
             {
-                NativePtr = nativeCtor();
+                Debug.Assert(nativeCtor != null);
+
+                // Need postinitialization.
+                NativePtr = nativeCtor(godot_bool.True);
 
                 InteropUtils.TieManagedToUnmanaged(this, NativePtr,
                     nativeName, refCounted, GetType(), cachedType);
@@ -258,7 +272,7 @@ namespace Godot
             return methodBind;
         }
 
-        internal static unsafe delegate* unmanaged<IntPtr> ClassDB_get_constructor(StringName type)
+        internal static unsafe delegate* unmanaged<godot_bool, IntPtr> ClassDB_get_constructor(StringName type)
         {
             // for some reason the '??' operator doesn't support 'delegate*'
             var typeSelf = (godot_string_name)type.NativeValue;
