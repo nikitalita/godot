@@ -33,6 +33,7 @@
 
 #include "core/method_bind.h"
 #include "core/object.h"
+#include "core/pair.h"
 #include "core/print_string.h"
 
 /**	To bind more then 6 parameters include this:
@@ -373,6 +374,7 @@ public:
 
 	static void add_resource_base_extension(const StringName &p_extension, const StringName &p_class);
 	static void get_resource_base_extensions(List<String> *p_extensions);
+	static void get_resource_base_extension_pairs(List<Pair<String, String>> *p_pairs);
 	static void get_extensions_for_type(const StringName &p_class, List<String> *p_extensions);
 
 	static void add_compatibility_class(const StringName &p_class, const StringName &p_fallback);

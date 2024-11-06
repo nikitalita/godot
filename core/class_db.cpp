@@ -1329,6 +1329,24 @@ void ClassDB::get_resource_base_extensions(List<String> *p_extensions) {
 		p_extensions->push_back(*K);
 	}
 }
+//	static void get_resource_base_extension_pairs(List<Pair<String, String>> *p_pairs);
+
+void ClassDB::get_resource_base_extension_pairs(List<Pair<String, String>> *p_pairs) {
+	const StringName *K = nullptr;
+	const StringName *C = nullptr;
+
+	while ((K = resource_base_extensions.next(K))) {
+		const StringName cmp = resource_base_extensions[*K];
+		String class_str = "\"" + String(cmp) + "\"";
+		// iterate through the classes, find any base classes
+		while (C = classes.next(C)) {
+			if (is_parent_class(*C, cmp) || is_parent_class(cmp, *C)) {
+				class_str += ",\"" + String(*C) + "\"";
+			}
+		}
+		p_pairs->push_back(Pair<String, String>(*K, class_str));
+	}
+}
 
 void ClassDB::get_extensions_for_type(const StringName &p_class, List<String> *p_extensions) {
 	const StringName *K = nullptr;

@@ -1668,6 +1668,22 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	_start_success = true;
 
 	ClassDB::set_current_api(ClassDB::API_NONE); //no more api is registered at this point
+	List<String> resource_extensions;
+	ClassDB::get_resource_base_extensions(&resource_extensions);
+	String extensions;
+	for (List<String>::Element *E = resource_extensions.front(); E; E = E->next()) {
+		if (extensions != "") {
+			extensions += ",";
+		}
+		extensions += E->get();
+	}
+	print_line("Resource extensions: " + extensions);
+
+	List<Pair<String, String>> resource_types;
+	ClassDB::get_resource_base_extension_pairs(&resource_types);
+	for (List<Pair<String, String>>::Element *E = resource_types.front(); E; E = E->next()) {
+		print_line(E->get().first + " -> " + E->get().second);
+	}
 
 	print_verbose("CORE API HASH: " + uitos(ClassDB::get_api_hash(ClassDB::API_CORE)));
 	print_verbose("EDITOR API HASH: " + uitos(ClassDB::get_api_hash(ClassDB::API_EDITOR)));
