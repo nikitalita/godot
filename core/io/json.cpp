@@ -82,6 +82,22 @@ void JSON::_stringify(String &r_result, const Variant &p_var, const String &p_in
 				return;
 			}
 
+			// No NaN in JSON.
+			if (Math::is_nan(num)) {
+				r_result += "null";
+				return;
+			}
+
+			// No Infinity in JSON; use a value that will be parsed as Infinity/-Infinity.
+			if (std::isinf(num)) {
+				if (num < 0.0) {
+					r_result += "-1.0e+511";
+				} else {
+					r_result += "1.0e+511";
+				}
+				return;
+			}
+
 			double magnitude = std::log10(Math::abs(num));
 			int total_digits = p_full_precision ? 17 : 14;
 			int precision = MAX(1, total_digits - (int)Math::floor(magnitude));
