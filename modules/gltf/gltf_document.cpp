@@ -8154,7 +8154,7 @@ Error GLTFDocument::_serialize_file(Ref<GLTFState> p_state, const String p_path)
 		Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE, &err);
 		ERR_FAIL_COND_V(file.is_null(), FAILED);
 
-		String json = Variant(p_state->json).to_json_string();
+		String json = JSON::stringify(p_state->json, "", true, true);
 
 		const uint32_t magic = 0x46546C67; // GLTF
 		const int32_t header_size = 12;
@@ -8204,7 +8204,7 @@ Error GLTFDocument::_serialize_file(Ref<GLTFState> p_state, const String p_path)
 		ERR_FAIL_COND_V(file.is_null(), FAILED);
 
 		file->create(FileAccess::ACCESS_RESOURCES);
-		String json = Variant(p_state->json).to_json_string();
+		String json = JSON::stringify(p_state->json, "", true, true);
 		file->store_string(json);
 	}
 	return err;
