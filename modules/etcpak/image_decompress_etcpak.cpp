@@ -160,6 +160,12 @@ static void decompress_image(EtcpakFormat format, const void *src, void *dst, co
 			case Etcpak_RGBA: {
 				_safe_decompress_mipmap<DecodeRGBABlock, ETCPAK_RGBA_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
 			} break;
+			case Etcpak_RSigned: {
+				_safe_decompress_mipmap<DecodeR11SBlock, ETCPAK_R_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RGSigned: {
+				_safe_decompress_mipmap<DecodeRG11SBlock, ETCPAK_RG_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
 		}
 	} else {
 		switch (format) {
@@ -174,6 +180,12 @@ static void decompress_image(EtcpakFormat format, const void *src, void *dst, co
 			} break;
 			case Etcpak_RGBA: {
 				_decompress_mipmap<DecodeRGBABlock, ETCPAK_RGBA_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RSigned: {
+				_decompress_mipmap<DecodeR11SBlock, ETCPAK_R_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RGSigned: {
+				_decompress_mipmap<DecodeRG11SBlock, ETCPAK_RG_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
 			} break;
 		}
 	}
@@ -205,8 +217,16 @@ void _decompress_etc(Image *p_image) {
 			etcpak_format = Etcpak_R;
 			break;
 
+		case Image::FORMAT_ETC2_R11S:
+			etcpak_format = Etcpak_RSigned;
+			break;
+
 		case Image::FORMAT_ETC2_RG11:
 			etcpak_format = Etcpak_RG;
+			break;
+
+		case Image::FORMAT_ETC2_RG11S:
+			etcpak_format = Etcpak_RGSigned;
 			break;
 
 		default:

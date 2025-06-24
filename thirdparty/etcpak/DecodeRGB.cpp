@@ -766,6 +766,60 @@ static etcpak_force_inline void DecodeRGPart( uint64_t r, uint64_t g, uint32_t* 
     }
 }
 
+static etcpak_force_inline void DecodeRSignedPart( uint64_t r, uint32_t* dst, uint32_t w )
+{
+    r = _bswap64( r );
+
+    // Excerpted from section 22.7 Format Signed R11 EAC:
+    // The base codeword is stored in the first 8 bits as shown in Table 22.5 part (a). It is a two’s-complement value in the range
+    // [-127, 127], and where the value -128 is not allowed; however, if it should occur anyway it must be treated as -127.
+    // The base codeword is then multiplied by 8 by shifting it left three steps.
+    //
+    // This is the only difference between the signed and unsigned R11 EAC formats.
+	const int32_t base = (((int8_t)( r >> 56 )) <= -128 ? -127 : ((int8_t)( r >> 56 ))) * 8;
+	const int32_t mul = ( r >> 52 ) & 0xF;
+    const auto atbl = g_alpha[( r >> 48 ) & 0xF];
+
+    for( int i=0; i<4; i++ )
+    {
+        for ( int j=0; j<4; j++ )
+        {
+            const auto amod = atbl[(r >> ( 45 - j*3 - i*12 )) & 0x7];
+            const uint32_t rc = clampu8( ( base + amod * g_alpha11Mul[mul] )/8 );
+            dst[j*w+i] = rc | 0xFF000000;
+        }
+    }
+}
+
+static etcpak_force_inline void DecodeRGSignedPart( uint64_t r, uint64_t g, uint32_t* dst, uint32_t w )
+{
+    r = _bswap64( r );
+    g = _bswap64( g );
+
+    // Both 64-bit integers are decoded in the same way as signed R11 EAC described in Section 22.7
+	const int32_t rbase = (((int8_t)( r >> 56 )) <= -128 ? -127 : ((int8_t)( r >> 56 ))) * 8;
+	const int32_t rmul = ( r >> 52 ) & 0xF;
+    const auto rtbl = g_alpha[( r >> 48 ) & 0xF];
+
+	const int32_t gbase = (((int8_t)( g >> 56 )) <= -128 ? -127 : ((int8_t)( g >> 56 ))) * 8;
+	const int32_t gmul = ( g >> 52 ) & 0xF;
+    const auto gtbl = g_alpha[( g >> 48 ) & 0xF];
+
+    for( int i=0; i<4; i++ )
+    {
+        for( int j=0; j<4; j++ )
+        {
+            const auto rmod = rtbl[(r >> ( 45 - j*3 - i*12 )) & 0x7];
+            const uint32_t rc = clampu8( ( rbase + rmod * g_alpha11Mul[rmul] )/8 );
+
+            const auto gmod = gtbl[(g >> ( 45 - j*3 - i*12 )) & 0x7];
+            const uint32_t gc = clampu8( ( gbase + gmod * g_alpha11Mul[gmul] )/8 );
+
+            dst[j*w+i] = rc | (gc << 8) | 0xFF000000;
+        }
+    }
+}
+
 void DecodeRBlock( const void* src, void* dst, size_t width )
 {
 	uint64_t* srcPtr = (uint64_t*)src;
@@ -794,4 +848,17 @@ void DecodeRGBABlock( const void* src, void* dst, size_t width )
     uint64_t a = *srcPtr++;
     uint64_t d = *srcPtr++;
     DecodeRGBAPart( d, a, (uint32_t*)dst, width );
+}
+
+void DecodeR11SBlock(const void *src, void *dst, size_t width) {
+	uint64_t *srcPtr = (uint64_t *)src;
+	uint64_t r = *srcPtr++;
+	DecodeRSignedPart(r, (uint32_t *)dst, width);
+}
+
+void DecodeRG11SBlock(const void *src, void *dst, size_t width) {
+	uint64_t *srcPtr = (uint64_t *)src;
+	uint64_t r = *srcPtr++;
+	uint64_t g = *srcPtr++;
+	DecodeRGSignedPart(r, g, (uint32_t *)dst, width);
 }

@@ -34,7 +34,9 @@
 
 enum EtcpakFormat {
 	Etcpak_R,
+	Etcpak_RSigned,
 	Etcpak_RG,
+	Etcpak_RGSigned,
 	Etcpak_RGB,
 	Etcpak_RGBA,
 };
