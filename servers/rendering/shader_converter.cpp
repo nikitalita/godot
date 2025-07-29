@@ -613,6 +613,7 @@ static constexpr const char *token_to_str[] = {
 	"hint_roughness_gray",
 	"hint_anisotropy",
 	"source_color",
+	"color_conversion_disabled",
 	"hint_range",
 	"hint_enum",
 	"instance_index",
