@@ -33,9 +33,9 @@
 
 #include "core/io/marshalls.h"
 
-#define _LOAD_META_PROPERTY "_load"
+#define _LOAD_COMPAT_META_PROPERTY "_load_compat"
 #define _TRANSFORM_TRACK_LIST_META_PROPERTY "_transform_track_list"
-#define _TRANSFORM_TRACK_DATA_META_PROPERTY(m_track_idx) "_transform_track_data__" + String::num(m_track_idx)
+#define _TRANSFORM_TRACK_DATA_META_PROPERTY(m_track_idx) "_transform_track_data__" + String::num_int64(m_track_idx)
 
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 	String prop_name = p_name;
@@ -111,7 +111,7 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 			} else {
 #ifndef DISABLE_DEPRECATED
 				// for compatibility with 3.x animations
-				if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do compatibility conversions if we are loading a resource.
+				if (get_meta(_LOAD_COMPAT_META_PROPERTY, false)) { // Only do compatibility conversions if we are loading a resource.
 					if (type == "transform") {
 						WARN_DEPRECATED_MSG("Animation uses old 'transform' track types, which is deprecated (and loads slower). Consider re-importing or re-saving the resource.");
 						PackedInt32Array track_list = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
@@ -157,7 +157,7 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 			return true;
 		}
 		// If we have a transform track, we need to store the data in the metadata to be able to convert it to the new format after the load is finished.
-		if (get_meta(_LOAD_META_PROPERTY, false)) { // Only do this on resource loads, not on editor changes
+		if (get_meta(_LOAD_COMPAT_META_PROPERTY, false)) { // Only do this on resource loads, not on editor changes
 			// check the metadata to see if this track is a transform track that we are holding on to
 			PackedInt32Array transform_tracks = get_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY, PackedInt32Array());
 			if (transform_tracks.has(track)) {
@@ -5386,16 +5386,16 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 
 void Animation::_start_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED
-	set_meta(_LOAD_META_PROPERTY, true);
+	set_meta(_LOAD_COMPAT_META_PROPERTY, true);
 #endif
 }
 
 void Animation::_finish_load(const StringName &p_res_format_type, int p_res_format_version) {
 #ifndef DISABLE_DEPRECATED // 3.x compatibility, convert transform tracks to separate tracks
-	if (!has_meta(_LOAD_META_PROPERTY)) {
+	if (!has_meta(_LOAD_COMPAT_META_PROPERTY)) {
 		return;
 	}
-	set_meta(_LOAD_META_PROPERTY, Variant());
+	set_meta(_LOAD_COMPAT_META_PROPERTY, Variant());
 	if (!has_meta(_TRANSFORM_TRACK_LIST_META_PROPERTY)) {
 		return;
 	}
@@ -5459,14 +5459,19 @@ void Animation::_finish_load(const StringName &p_res_format_type, int p_res_form
 		c_track_keys.erase("type");
 		c_track_keys.erase("keys");
 		remove_track(track_idx + offset); // remove dummy track
-
+		NodePath node_path;
 		add_track(TYPE_POSITION_3D, track_idx + offset);
 		for (int j = 0; j < c_track_keys.size(); j++) {
 			String key = c_track_keys[j];
-			_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
+			Variant &value = track_data[key];
+			if (key == "path") {
+				node_path = value;
+			}
+			_set("tracks/" + itos(track_idx + offset) + "/" + key, value);
 		}
+		bool is_bone_transform = node_path.get_subname_count() != 0;
 		_set("tracks/" + itos(track_idx + offset) + "/keys", position_keys);
-		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
+		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", is_bone_transform);
 		offset++;
 
 		add_track(TYPE_ROTATION_3D, track_idx + offset);
@@ -5475,7 +5480,7 @@ void Animation::_finish_load(const StringName &p_res_format_type, int p_res_form
 			_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
 		}
 		_set("tracks/" + itos(track_idx + offset) + "/keys", rotation_keys);
-		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
+		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", is_bone_transform);
 		offset++;
 		add_track(TYPE_SCALE_3D, track_idx + offset);
 		for (int j = 0; j < c_track_keys.size(); j++) {
@@ -5483,7 +5488,7 @@ void Animation::_finish_load(const StringName &p_res_format_type, int p_res_form
 			_set("tracks/" + itos(track_idx + offset) + "/" + key, track_data[key]);
 		}
 		_set("tracks/" + itos(track_idx + offset) + "/keys", scale_keys);
-		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", true);
+		_set("tracks/" + itos(track_idx + offset) + "/relative_to_rest", is_bone_transform);
 		offset++;
 		offset--; // subtract 1 because we removed the dummy track
 		// erase the track data

@@ -249,8 +249,9 @@ bool AnimationMixer::_recalc_animation(Ref<Animation> &anim) {
 			Node *node = parent->get_node(path);
 			ERR_FAIL_COND_V(!node, false);
 			Skeleton3D *skel = Object::cast_to<Skeleton3D>(node);
-			ERR_FAIL_COND_V(!skel, false);
-
+			if (!skel) { // transforming non-skeleton node, not relative to rest
+				continue;
+			}
 			StringName bone = path.get_subname(0);
 			int bone_idx = skel->find_bone(bone);
 			if (bone_idx == -1) {
