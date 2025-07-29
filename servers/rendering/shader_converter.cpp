@@ -601,6 +601,7 @@ static constexpr const char *token_to_str[] = {
 	"out",
 	"inout",
 	"render_mode",
+	"stencil_mode",
 	"hint_default_white",
 	"hint_default_black",
 	"hint_default_transparent",
