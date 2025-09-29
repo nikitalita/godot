@@ -37,6 +37,9 @@ enum EtcpakFormat {
 	Etcpak_RG,
 	Etcpak_RGB,
 	Etcpak_RGBA,
+	Etcpak_R11S,
+	Etcpak_RG11S,
+	Etcpak_RGBA1,
 };
 
 void _decompress_etc(Image *p_image);

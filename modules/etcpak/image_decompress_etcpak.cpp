@@ -39,6 +39,7 @@
 #define ETCPAK_RG_BLOCK_SIZE 16
 #define ETCPAK_RGB_BLOCK_SIZE 8
 #define ETCPAK_RGBA_BLOCK_SIZE 16
+#define ETCPAK_RGBA1_BLOCK_SIZE 8
 
 template <void (*decompress_func)(const void *, void *, size_t), int block_size, int pixel_size>
 static inline void _safe_decompress_mipmap(int width, int height, const uint8_t *src, uint8_t *dst) {
@@ -160,6 +161,15 @@ static void decompress_image(EtcpakFormat format, const void *src, void *dst, co
 			case Etcpak_RGBA: {
 				_safe_decompress_mipmap<DecodeRGBABlock, ETCPAK_RGBA_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
 			} break;
+			case Etcpak_R11S: {
+				_safe_decompress_mipmap<DecodeR11SBlock, ETCPAK_R_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RG11S: {
+				_safe_decompress_mipmap<DecodeRG11SBlock, ETCPAK_RG_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RGBA1: {
+				_safe_decompress_mipmap<DecodeRGBA1Block, ETCPAK_RGBA1_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
 		}
 	} else {
 		switch (format) {
@@ -174,6 +184,15 @@ static void decompress_image(EtcpakFormat format, const void *src, void *dst, co
 			} break;
 			case Etcpak_RGBA: {
 				_decompress_mipmap<DecodeRGBABlock, ETCPAK_RGBA_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_R11S: {
+				_decompress_mipmap<DecodeR11SBlock, ETCPAK_R_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RG11S: {
+				_decompress_mipmap<DecodeRG11SBlock, ETCPAK_RG_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
+			} break;
+			case Etcpak_RGBA1: {
+				_decompress_mipmap<DecodeRGBA1Block, ETCPAK_RGBA1_BLOCK_SIZE, 4>(width, height, src_blocks, dec_blocks);
 			} break;
 		}
 	}
@@ -207,6 +226,18 @@ void _decompress_etc(Image *p_image) {
 
 		case Image::FORMAT_ETC2_RG11:
 			etcpak_format = Etcpak_RG;
+			break;
+
+		case Image::FORMAT_ETC2_R11S:
+			etcpak_format = Etcpak_R11S;
+			break;
+
+		case Image::FORMAT_ETC2_RG11S:
+			etcpak_format = Etcpak_RG11S;
+			break;
+
+		case Image::FORMAT_ETC2_RGB8A1:
+			etcpak_format = Etcpak_RGBA1;
 			break;
 
 		default:
