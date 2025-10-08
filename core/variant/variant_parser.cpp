@@ -2003,8 +2003,8 @@ static String rtos_fix(double p_value, bool p_compat) {
 	return String::num_scientific(p_value);
 }
 
-static String encode_resource_reference(const String &path) {
-	ResourceUID::ID uid = ResourceLoader::get_resource_uid(path);
+static String encode_resource_reference(const String &path, bool p_compat) {
+	ResourceUID::ID uid = p_compat ? ResourceUID::INVALID_ID : ResourceLoader::get_resource_uid(path);
 	if (uid != ResourceUID::INVALID_ID) {
 		return "Resource(\"" + ResourceUID::get_singleton()->id_to_text(uid) +
 				"\", \"" + path.c_escape_multiline() + "\")";
@@ -2210,7 +2210,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 				if (res_text.is_empty() && res->get_path().is_resource_file()) {
 					// External resource.
 					String path = res->get_path();
-					res_text = encode_resource_reference(path);
+					res_text = encode_resource_reference(path, p_compat);
 				}
 
 				// Could come up with some sort of text.
@@ -2261,7 +2261,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, key_script);
 					}
 					if (resource_text.is_empty() && key_script->get_path().is_resource_file()) {
-						resource_text = encode_resource_reference(key_script->get_path());
+						resource_text = encode_resource_reference(key_script->get_path(), p_compat);
 					}
 
 					if (!resource_text.is_empty()) {
@@ -2290,7 +2290,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, value_script);
 					}
 					if (resource_text.is_empty() && value_script->get_path().is_resource_file()) {
-						resource_text = encode_resource_reference(value_script->get_path());
+						resource_text = encode_resource_reference(value_script->get_path(), p_compat);
 					}
 
 					if (!resource_text.is_empty()) {
@@ -2362,7 +2362,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, script);
 					}
 					if (resource_text.is_empty() && script->get_path().is_resource_file()) {
-						resource_text = encode_resource_reference(script->get_path());
+						resource_text = encode_resource_reference(script->get_path(), p_compat);
 					}
 
 					if (!resource_text.is_empty()) {
