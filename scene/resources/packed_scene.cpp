@@ -797,7 +797,7 @@ Error SceneState::_parse_node(Node *p_owner, Node *p_node, int p_parent_idx, Has
 	// document it. if you fail to understand something, please ask!
 
 	//discard nodes that do not belong to be processed
-	if (p_node != p_owner && p_node->get_owner() != p_owner && !p_owner->is_editable_instance(p_node->get_owner())) {
+	if (p_node != p_owner && p_node->get_owner() != p_owner && p_node->get_owner() && !p_owner->is_editable_instance(p_node->get_owner())) {
 		return OK;
 	}
 

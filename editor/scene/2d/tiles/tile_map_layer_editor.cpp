@@ -3597,7 +3597,7 @@ void TileMapLayerEditor::_find_tile_map_layers_in_scene(Node *p_current, const N
 		if (!p_current->get_owner()) {
 			return;
 		}
-		if (p_current->get_owner() != p_owner && !p_owner->is_editable_instance(p_current->get_owner())) {
+		if (p_current->get_owner() != p_owner && p_current->get_owner() && !p_owner->is_editable_instance(p_current->get_owner())) {
 			return;
 		}
 	}

@@ -717,7 +717,7 @@ void CanvasItemEditor::_get_canvas_items_at_pos(const Point2 &p_pos, Vector<_Sel
 		}
 
 		//Remove the item if invalid
-		if (!ci || duplicate || (ci != scene && ci->get_owner() != scene && !scene->is_editable_instance(ci->get_owner())) || (!p_allow_locked && _is_node_locked(ci))) {
+		if (!ci || duplicate || (ci != scene && ci->get_owner() != scene && ci->get_owner() && !scene->is_editable_instance(ci->get_owner())) || (!p_allow_locked && _is_node_locked(ci))) {
 			r_items.remove_at(i);
 			i--;
 		} else {
@@ -4070,7 +4070,7 @@ void CanvasItemEditor::_draw_invisible_nodes_positions(Node *p_node, const Trans
 	ERR_FAIL_NULL(p_node);
 
 	Node *scene = EditorNode::get_singleton()->get_edited_scene();
-	if (p_node != scene && p_node->get_owner() != scene && !scene->is_editable_instance(p_node->get_owner())) {
+	if (p_node != scene && p_node->get_owner() != scene && p_node->get_owner() && !scene->is_editable_instance(p_node->get_owner())) {
 		return;
 	}
 	CanvasItem *ci = Object::cast_to<CanvasItem>(p_node);
@@ -4213,7 +4213,7 @@ void CanvasItemEditor::_draw_locks_and_groups(Node *p_node, const Transform2D &p
 	ERR_FAIL_NULL(p_node);
 
 	Node *scene = EditorNode::get_singleton()->get_edited_scene();
-	if (p_node != scene && p_node->get_owner() != scene && !scene->is_editable_instance(p_node->get_owner())) {
+	if (p_node != scene && p_node->get_owner() != scene && p_node->get_owner() && !scene->is_editable_instance(p_node->get_owner())) {
 		return;
 	}
 	CanvasItem *ci = Object::cast_to<CanvasItem>(p_node);
