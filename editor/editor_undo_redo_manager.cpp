@@ -552,6 +552,8 @@ void EditorUndoRedoManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_history_undo_redo", "id"), &EditorUndoRedoManager::get_history_undo_redo);
 	ClassDB::bind_method(D_METHOD("clear_history", "id", "increase_version"), &EditorUndoRedoManager::clear_history, DEFVAL(INVALID_HISTORY), DEFVAL(true));
 
+	ClassDB::bind_method(D_METHOD("is_history_unsaved", "id"), &EditorUndoRedoManager::is_history_unsaved);
+
 	ADD_SIGNAL(MethodInfo("history_changed"));
 	ADD_SIGNAL(MethodInfo("version_changed"));
 
