@@ -127,7 +127,6 @@ public:
 	enum DisplayMode {
 		DISPLAY_THUMBNAILS,
 		DISPLAY_LIST,
-		DISPLAY_MAX
 	};
 
 	enum ItemMenu {
@@ -185,6 +184,7 @@ private:
 	FileMode mode = FILE_MODE_SAVE_FILE;
 	DisplayMode display_mode = DISPLAY_THUMBNAILS;
 	FileSortOption file_sort = FileSortOption::NAME;
+	Ref<DirAccess> dir_access;
 
 	Vector<String> filters;
 	Vector<String> processed_filters;
@@ -204,6 +204,7 @@ private:
 	String root_prefix;
 	String full_dir;
 
+	Callable thumbnail_callback;
 	bool is_invalidating = false;
 
 	VBoxContainer *main_vbox = nullptr;
@@ -298,6 +299,7 @@ private:
 	void update_filters();
 	void update_customization();
 
+	void _item_menu_id_pressed(int p_option);
 	void _empty_clicked(const Vector2 &p_pos, MouseButton p_button);
 	void _item_clicked(int p_item, const Vector2 &p_pos, MouseButton p_button);
 	void _popup_menu(const Vector2 &p_pos, int p_for_item);
@@ -312,6 +314,7 @@ private:
 
 	void _select_drive(int p_idx);
 	void _dir_submitted(String p_dir);
+	void _file_submitted(const String &p_file);
 	void _action_pressed();
 	void _save_confirm_pressed();
 	void _cancel_pressed();
@@ -349,6 +352,7 @@ private:
 
 	virtual void shortcut_input(const Ref<InputEvent> &p_event) override;
 
+	bool _can_use_native_popup();
 	void _native_popup();
 	void _native_dialog_cb(bool p_ok, const Vector<String> &p_files, int p_filter);
 	void _native_dialog_cb_with_options(bool p_ok, const Vector<String> &p_files, int p_filter, const Dictionary &p_selected_options);
@@ -364,15 +368,7 @@ private:
 	virtual void _post_popup() override;
 
 protected:
-	Ref<DirAccess> dir_access;
-
-	bool _can_use_native_popup() const;
-	virtual void _item_menu_id_pressed(int p_option);
-
-	virtual bool _should_use_native_popup() const;
-	virtual bool _should_hide_file(const String &p_file) const { return false; }
-	virtual Color _get_folder_color(const String &p_path) const { return theme_cache.folder_icon_color; }
-
+	virtual void _popup_base(const Rect2i &p_rect = Rect2i()) override;
 	void _validate_property(PropertyInfo &p_property) const;
 	void _notification(int p_what);
 	bool _set(const StringName &p_name, const Variant &p_value) { return property_helper.property_set_value(p_name, p_value); }
@@ -380,7 +376,6 @@ protected:
 	void _get_property_list(List<PropertyInfo> *p_list) const { property_helper.get_property_list(p_list); }
 	bool _property_can_revert(const StringName &p_name) const { return property_helper.property_can_revert(p_name); }
 	bool _property_get_revert(const StringName &p_name, Variant &r_property) const { return property_helper.property_get_revert(p_name, r_property); }
-
 	static void _bind_methods();
 
 #ifndef DISABLE_DEPRECATED
@@ -401,6 +396,7 @@ public:
 	void set_filename_filter(const String &p_filename_filter);
 	String get_filename_filter() const;
 
+	void set_enable_multiple_selection(bool p_enable);
 	Vector<String> get_selected_files() const;
 
 	String get_current_dir() const;
@@ -450,7 +446,6 @@ public:
 
 	VBoxContainer *get_vbox() { return main_vbox; }
 	LineEdit *get_line_edit() { return filename_edit; }
-	ItemList *get_file_item_list() { return file_list; }
 
 	void set_access(Access p_access);
 	Access get_access() const;
