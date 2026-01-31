@@ -60,6 +60,8 @@ RenderingServer::ShaderMode get_shader_mode(const String &p_mode_string) {
 		return RS::SHADER_SKY;
 	} else if (p_mode_string == "fog") {
 		return RS::SHADER_FOG;
+	} else if (p_mode_string == "texture_blit") {
+		return RS::SHADER_TEXTURE_BLIT;
 	} else {
 		return RS::SHADER_MAX;
 	}
@@ -105,7 +107,9 @@ TEST_CASE("[ShaderLanguage] Ensure no reserved keywords are valid identifiers") 
 	HashSet<String> shader_types_to_test = ShaderTypes::get_singleton()->get_types();
 	for (const String &shader_type : shader_types_to_test) {
 		ShaderLanguage::ShaderCompileInfo info;
-		get_compile_info(info, get_shader_mode(shader_type));
+		RS::ShaderMode mode = get_shader_mode(shader_type);
+		CHECK_NE(mode, RS::SHADER_MAX);
+		get_compile_info(info, mode);
 		// test templates with non-keyword identifiers
 
 		for (int i = 0; decl_test_template[i] != nullptr; i++) {
