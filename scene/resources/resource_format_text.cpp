@@ -185,6 +185,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(VariantParser::ResourcePars
 	if (packed_scene.is_null()) {
 		packed_scene.instantiate();
 	}
+	packed_scene->_start_load(SNAME("text"), format_version);
 
 	while (true) {
 		if (next_tag.name == "node") {
@@ -293,6 +294,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(VariantParser::ResourcePars
 						return Ref<PackedScene>();
 					} else {
 						error = OK;
+						packed_scene->_finish_load(SNAME("text"), format_version);
 						return packed_scene;
 					}
 				}
@@ -384,6 +386,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(VariantParser::ResourcePars
 					return Ref<PackedScene>();
 				} else {
 					error = OK;
+					packed_scene->_finish_load("text", format_version);
 					return packed_scene;
 				}
 			}
@@ -407,6 +410,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(VariantParser::ResourcePars
 					return Ref<PackedScene>();
 				} else {
 					error = OK;
+					packed_scene->_finish_load("text", format_version);
 					return packed_scene;
 				}
 			}
@@ -628,6 +632,7 @@ Error ResourceLoaderText::load() {
 
 		int_resources[id] = res; // Always assign int resources.
 		if (do_assign) {
+			res->_start_load(SNAME("text"), format_version);
 			if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
 				res->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE);
 			} else {
@@ -713,6 +718,10 @@ Error ResourceLoaderText::load() {
 		if (!missing_resource_properties.is_empty()) {
 			res->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
 		}
+
+		if (do_assign) {
+			res->_finish_load(SNAME("text"), format_version);
+		}
 	}
 
 	while (true) {
@@ -764,6 +773,8 @@ Error ResourceLoaderText::load() {
 				resource = Ref<Resource>(r);
 			}
 		}
+
+		resource->_start_load(SNAME("text"), format_version);
 
 		Dictionary missing_resource_properties;
 
@@ -858,6 +869,7 @@ Error ResourceLoaderText::load() {
 		if (!missing_resource_properties.is_empty()) {
 			resource->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
 		}
+		resource->_finish_load(SNAME("text"), format_version);
 
 		error = OK;
 
