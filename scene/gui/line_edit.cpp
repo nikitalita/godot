@@ -34,6 +34,7 @@
 #include "core/config/project_settings.h"
 #include "core/input/input.h"
 #include "core/input/input_map.h"
+#include "core/object/class_db.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/string/alt_codes.h"
@@ -42,6 +43,7 @@
 #include "scene/main/window.h"
 #include "scene/theme/theme_db.h"
 #include "servers/display/display_server.h"
+#include "servers/rendering/rendering_server.h"
 #include "servers/text/text_server.h"
 
 #ifdef TOOLS_ENABLED

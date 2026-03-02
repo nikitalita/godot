@@ -34,6 +34,7 @@
 #include "core/input/input_map.h"
 #include "core/io/resource_loader.h"
 #include "core/math/math_defs.h"
+#include "core/object/class_db.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/string/translation_server.h"
@@ -43,6 +44,7 @@
 #include "scene/resources/atlas_texture.h"
 #include "scene/theme/theme_db.h"
 #include "servers/display/display_server.h"
+#include "servers/rendering/rendering_server.h"
 
 #include "modules/modules_enabled.gen.h" // For regex.
 #ifdef MODULE_REGEX_ENABLED

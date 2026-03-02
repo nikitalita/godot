@@ -33,11 +33,13 @@
 
 #include "core/io/marshalls.h"
 #include "core/math/geometry_2d.h"
+#include "core/object/class_db.h"
 #include "core/templates/local_vector.h"
 #include "core/templates/rb_set.h"
 #include "scene/gui/control.h"
 #include "scene/resources/image_texture.h"
 #include "scene/resources/mesh.h"
+#include "servers/rendering/rendering_server.h"
 
 #ifndef NAVIGATION_2D_DISABLED
 #include "servers/navigation_2d/navigation_server_2d.h"

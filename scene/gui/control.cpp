@@ -31,9 +31,12 @@
 #include "control.h"
 #include "control.compat.inc"
 
+STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
+
 #include "container.h"
 #include "core/config/project_settings.h"
 #include "core/input/input_map.h"
+#include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
 #include "scene/gui/scroll_container.h"

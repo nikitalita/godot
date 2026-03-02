@@ -45,36 +45,6 @@
 #include "core/string/print_string.h"
 #include "core/string/translation_server.h"
 #include "core/version.h"
-#include "editor/editor_string_names.h"
-#include "editor/inspector/editor_context_menu_plugin.h"
-#include "editor/plugins/editor_plugin_list.h"
-#include "main/main.h"
-#include "scene/2d/node_2d.h"
-#include "scene/3d/bone_attachment_3d.h"
-#include "scene/animation/animation_tree.h"
-#include "scene/gui/color_picker.h"
-#include "scene/gui/dialogs.h"
-#include "scene/gui/file_dialog.h"
-#include "scene/gui/menu_bar.h"
-#include "scene/gui/menu_button.h"
-#include "scene/gui/panel.h"
-#include "scene/gui/popup.h"
-#include "scene/gui/rich_text_label.h"
-#include "scene/gui/split_container.h"
-#include "scene/gui/tab_container.h"
-#include "scene/main/timer.h"
-#include "scene/main/window.h"
-#include "scene/property_utils.h"
-#include "scene/resources/dpi_texture.h"
-#include "scene/resources/image_texture.h"
-#include "scene/resources/packed_scene.h"
-#include "scene/resources/portable_compressed_texture.h"
-#include "scene/theme/theme_db.h"
-#include "servers/display/display_server.h"
-#include "servers/navigation_2d/navigation_server_2d.h"
-#include "servers/navigation_3d/navigation_server_3d.h"
-#include "servers/rendering/rendering_server.h"
-
 #include "editor/animation/animation_player_editor_plugin.h"
 #include "editor/asset_library/asset_library_editor_plugin.h"
 #include "editor/audio/audio_stream_preview.h"
@@ -95,6 +65,7 @@
 #include "editor/editor_interface.h"
 #include "editor/editor_log.h"
 #include "editor/editor_main_screen.h"
+#include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/export/dedicated_server_export_plugin.h"
 #include "editor/export/editor_export.h"
@@ -133,6 +104,7 @@
 #include "editor/import/resource_importer_texture.h"
 #include "editor/import/resource_importer_texture_atlas.h"
 #include "editor/import/resource_importer_wav.h"
+#include "editor/inspector/editor_context_menu_plugin.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/inspector/editor_preview_plugins.h"
 #include "editor/inspector/editor_properties.h"
@@ -141,6 +113,7 @@
 #include "editor/inspector/editor_resource_preview.h"
 #include "editor/inspector/multi_node_edit.h"
 #include "editor/plugins/editor_plugin.h"
+#include "editor/plugins/editor_plugin_list.h"
 #include "editor/plugins/editor_resource_conversion_plugin.h"
 #include "editor/plugins/plugin_config_dialog.h"
 #include "editor/project_upgrade/project_upgrade_tool.h"
@@ -173,6 +146,32 @@
 #include "editor/translations/editor_translation_parser.h"
 #include "editor/translations/packed_scene_translation_parser_plugin.h"
 #include "editor/version_control/version_control_editor_plugin.h"
+#include "main/main.h"
+#include "scene/2d/node_2d.h"
+#include "scene/3d/bone_attachment_3d.h"
+#include "scene/animation/animation_tree.h"
+#include "scene/gui/color_picker.h"
+#include "scene/gui/dialogs.h"
+#include "scene/gui/file_dialog.h"
+#include "scene/gui/menu_bar.h"
+#include "scene/gui/menu_button.h"
+#include "scene/gui/panel.h"
+#include "scene/gui/popup.h"
+#include "scene/gui/rich_text_label.h"
+#include "scene/gui/split_container.h"
+#include "scene/gui/tab_container.h"
+#include "scene/main/timer.h"
+#include "scene/main/window.h"
+#include "scene/property_utils.h"
+#include "scene/resources/dpi_texture.h"
+#include "scene/resources/image_texture.h"
+#include "scene/resources/packed_scene.h"
+#include "scene/resources/portable_compressed_texture.h"
+#include "scene/theme/theme_db.h"
+#include "servers/display/display_server.h"
+#include "servers/navigation_2d/navigation_server_2d.h"
+#include "servers/navigation_3d/navigation_server_3d.h"
+#include "servers/rendering/rendering_server.h"
 
 #ifdef VULKAN_ENABLED
 #include "editor/shader/shader_baker/shader_baker_export_plugin_platform_vulkan.h"
@@ -186,8 +185,6 @@
 #include "editor/shader/shader_baker/shader_baker_export_plugin_platform_metal.h"
 #endif
 
-#include "modules/modules_enabled.gen.h" // For gdscript, mono.
-
 #ifndef PHYSICS_2D_DISABLED
 #include "servers/physics_2d/physics_server_2d.h"
 #endif // PHYSICS_2D_DISABLED
@@ -199,6 +196,8 @@
 #ifdef ANDROID_ENABLED
 #include "editor/gui/touch_actions_panel.h"
 #endif // ANDROID_ENABLED
+
+#include "modules/modules_enabled.gen.h" // For gdscript, mono.
 
 #include <cstdlib>
 
@@ -488,18 +487,18 @@ void EditorNode::_update_from_settings() {
 		scene_root->propagate_notification(Control::NOTIFICATION_LAYOUT_DIRECTION_CHANGED);
 	}
 
-	RS::DOFBokehShape dof_shape = RS::DOFBokehShape(int(GLOBAL_GET("rendering/camera/depth_of_field/depth_of_field_bokeh_shape")));
+	RSE::DOFBokehShape dof_shape = RSE::DOFBokehShape(int(GLOBAL_GET("rendering/camera/depth_of_field/depth_of_field_bokeh_shape")));
 	RS::get_singleton()->camera_attributes_set_dof_blur_bokeh_shape(dof_shape);
-	RS::DOFBlurQuality dof_quality = RS::DOFBlurQuality(int(GLOBAL_GET("rendering/camera/depth_of_field/depth_of_field_bokeh_quality")));
+	RSE::DOFBlurQuality dof_quality = RSE::DOFBlurQuality(int(GLOBAL_GET("rendering/camera/depth_of_field/depth_of_field_bokeh_quality")));
 	bool dof_jitter = GLOBAL_GET("rendering/camera/depth_of_field/depth_of_field_use_jitter");
 	RS::get_singleton()->camera_attributes_set_dof_blur_quality(dof_quality, dof_jitter);
-	RS::get_singleton()->environment_set_ssao_quality(RS::EnvironmentSSAOQuality(int(GLOBAL_GET("rendering/environment/ssao/quality"))), GLOBAL_GET("rendering/environment/ssao/half_size"), GLOBAL_GET("rendering/environment/ssao/adaptive_target"), GLOBAL_GET("rendering/environment/ssao/blur_passes"), GLOBAL_GET("rendering/environment/ssao/fadeout_from"), GLOBAL_GET("rendering/environment/ssao/fadeout_to"));
+	RS::get_singleton()->environment_set_ssao_quality(RSE::EnvironmentSSAOQuality(int(GLOBAL_GET("rendering/environment/ssao/quality"))), GLOBAL_GET("rendering/environment/ssao/half_size"), GLOBAL_GET("rendering/environment/ssao/adaptive_target"), GLOBAL_GET("rendering/environment/ssao/blur_passes"), GLOBAL_GET("rendering/environment/ssao/fadeout_from"), GLOBAL_GET("rendering/environment/ssao/fadeout_to"));
 	RS::get_singleton()->screen_space_roughness_limiter_set_active(GLOBAL_GET("rendering/anti_aliasing/screen_space_roughness_limiter/enabled"), GLOBAL_GET("rendering/anti_aliasing/screen_space_roughness_limiter/amount"), GLOBAL_GET("rendering/anti_aliasing/screen_space_roughness_limiter/limit"));
 	bool glow_bicubic = int(GLOBAL_GET("rendering/environment/glow/upscale_mode")) > 0;
-	RS::get_singleton()->environment_set_ssil_quality(RS::EnvironmentSSILQuality(int(GLOBAL_GET("rendering/environment/ssil/quality"))), GLOBAL_GET("rendering/environment/ssil/half_size"), GLOBAL_GET("rendering/environment/ssil/adaptive_target"), GLOBAL_GET("rendering/environment/ssil/blur_passes"), GLOBAL_GET("rendering/environment/ssil/fadeout_from"), GLOBAL_GET("rendering/environment/ssil/fadeout_to"));
+	RS::get_singleton()->environment_set_ssil_quality(RSE::EnvironmentSSILQuality(int(GLOBAL_GET("rendering/environment/ssil/quality"))), GLOBAL_GET("rendering/environment/ssil/half_size"), GLOBAL_GET("rendering/environment/ssil/adaptive_target"), GLOBAL_GET("rendering/environment/ssil/blur_passes"), GLOBAL_GET("rendering/environment/ssil/fadeout_from"), GLOBAL_GET("rendering/environment/ssil/fadeout_to"));
 	RS::get_singleton()->environment_glow_set_use_bicubic_upscale(glow_bicubic);
 	RS::get_singleton()->environment_set_ssr_half_size(GLOBAL_GET("rendering/environment/screen_space_reflection/half_size"));
-	RS::SubSurfaceScatteringQuality sss_quality = RS::SubSurfaceScatteringQuality(int(GLOBAL_GET("rendering/environment/subsurface_scattering/subsurface_scattering_quality")));
+	RSE::SubSurfaceScatteringQuality sss_quality = RSE::SubSurfaceScatteringQuality(int(GLOBAL_GET("rendering/environment/subsurface_scattering/subsurface_scattering_quality")));
 	RS::get_singleton()->sub_surface_scattering_set_quality(sss_quality);
 	float sss_scale = GLOBAL_GET("rendering/environment/subsurface_scattering/subsurface_scattering_scale");
 	float sss_depth_scale = GLOBAL_GET("rendering/environment/subsurface_scattering/subsurface_scattering_depth_scale");
@@ -509,17 +508,17 @@ void EditorNode::_update_from_settings() {
 	uint32_t directional_shadow_16_bits = GLOBAL_GET("rendering/lights_and_shadows/directional_shadow/16_bits");
 	RS::get_singleton()->directional_shadow_atlas_set_size(directional_shadow_size, directional_shadow_16_bits);
 
-	RS::ShadowQuality shadows_quality = RS::ShadowQuality(int(GLOBAL_GET("rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality")));
+	RSE::ShadowQuality shadows_quality = RSE::ShadowQuality(int(GLOBAL_GET("rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality")));
 	RS::get_singleton()->positional_soft_shadow_filter_set_quality(shadows_quality);
-	RS::ShadowQuality directional_shadow_quality = RS::ShadowQuality(int(GLOBAL_GET("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality")));
+	RSE::ShadowQuality directional_shadow_quality = RSE::ShadowQuality(int(GLOBAL_GET("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality")));
 	RS::get_singleton()->directional_soft_shadow_filter_set_quality(directional_shadow_quality);
 	float probe_update_speed = GLOBAL_GET("rendering/lightmapping/probe_capture/update_speed");
 	RS::get_singleton()->lightmap_set_probe_capture_update_speed(probe_update_speed);
-	RS::EnvironmentSDFGIFramesToConverge frames_to_converge = RS::EnvironmentSDFGIFramesToConverge(int(GLOBAL_GET("rendering/global_illumination/sdfgi/frames_to_converge")));
+	RSE::EnvironmentSDFGIFramesToConverge frames_to_converge = RSE::EnvironmentSDFGIFramesToConverge(int(GLOBAL_GET("rendering/global_illumination/sdfgi/frames_to_converge")));
 	RS::get_singleton()->environment_set_sdfgi_frames_to_converge(frames_to_converge);
-	RS::EnvironmentSDFGIRayCount ray_count = RS::EnvironmentSDFGIRayCount(int(GLOBAL_GET("rendering/global_illumination/sdfgi/probe_ray_count")));
+	RSE::EnvironmentSDFGIRayCount ray_count = RSE::EnvironmentSDFGIRayCount(int(GLOBAL_GET("rendering/global_illumination/sdfgi/probe_ray_count")));
 	RS::get_singleton()->environment_set_sdfgi_ray_count(ray_count);
-	RS::VoxelGIQuality voxel_gi_quality = RS::VoxelGIQuality(int(GLOBAL_GET("rendering/global_illumination/voxel_gi/quality")));
+	RSE::VoxelGIQuality voxel_gi_quality = RSE::VoxelGIQuality(int(GLOBAL_GET("rendering/global_illumination/voxel_gi/quality")));
 	RS::get_singleton()->voxel_gi_set_quality(voxel_gi_quality);
 	RS::get_singleton()->environment_set_volumetric_fog_volume_size(GLOBAL_GET("rendering/environment/volumetric_fog/volume_size"), GLOBAL_GET("rendering/environment/volumetric_fog/volume_depth"));
 	RS::get_singleton()->environment_set_volumetric_fog_filter_active(bool(GLOBAL_GET("rendering/environment/volumetric_fog/use_filter")));
@@ -561,14 +560,32 @@ void EditorNode::_update_from_settings() {
 	float mesh_lod_threshold = GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels");
 	scene_root->set_mesh_lod_threshold(mesh_lod_threshold);
 
-	RS::get_singleton()->decals_set_filter(RS::DecalFilter(int(GLOBAL_GET("rendering/textures/decals/filter"))));
-	RS::get_singleton()->light_projectors_set_filter(RS::LightProjectorFilter(int(GLOBAL_GET("rendering/textures/light_projectors/filter"))));
+	RS::get_singleton()->decals_set_filter(RSE::DecalFilter(int(GLOBAL_GET("rendering/textures/decals/filter"))));
+	RS::get_singleton()->light_projectors_set_filter(RSE::LightProjectorFilter(int(GLOBAL_GET("rendering/textures/light_projectors/filter"))));
 	RS::get_singleton()->lightmaps_set_bicubic_filter(GLOBAL_GET("rendering/lightmapping/lightmap_gi/use_bicubic_filter"));
 	RS::get_singleton()->material_set_use_debanding(GLOBAL_GET("rendering/anti_aliasing/quality/use_debanding"));
 
 	SceneTree *tree = get_tree();
 	tree->set_debug_collisions_color(GLOBAL_GET("debug/shapes/collision/shape_color"));
 	tree->set_debug_collision_contact_color(GLOBAL_GET("debug/shapes/collision/contact_color"));
+
+	if (ProjectSettings::get_singleton()->check_changed_settings_in_group("display/window/hdr/request_hdr_output") || ProjectSettings::get_singleton()->check_changed_settings_in_group("rendering/viewport/hdr_2d")) {
+		const bool use_hdr = GLOBAL_GET("display/window/hdr/request_hdr_output").operator bool() || GLOBAL_GET("rendering/viewport/hdr_2d").operator bool();
+
+		LocalVector<ObjectID> invalid_viewports;
+		for (const ObjectID &id : hdr_viewports) {
+			Viewport *vp = ObjectDB::get_instance<Viewport>(id);
+			if (vp) {
+				vp->set_use_hdr_2d(use_hdr);
+			} else {
+				invalid_viewports.push_back(id);
+			}
+		}
+
+		for (const ObjectID &id : invalid_viewports) {
+			hdr_viewports.erase(id);
+		}
+	}
 
 	ResourceImporterTexture::get_singleton()->update_imports();
 
@@ -861,21 +878,19 @@ void EditorNode::_notification(int p_what) {
 				scene_tabs->update_scene_tabs();
 			}
 
-			// Update the animation frame of the update spinner.
-			uint64_t frame = Engine::get_singleton()->get_frames_drawn();
-			uint64_t tick = OS::get_singleton()->get_ticks_msec();
+			if (update_spinner->is_visible()) {
+				// Update the animation frame of the update spinner.
+				uint64_t frame = Engine::get_singleton()->get_frames_drawn();
+				uint64_t tick = OS::get_singleton()->get_ticks_msec();
 
-			if (frame != update_spinner_step_frame && (tick - update_spinner_step_msec) > (1000 / 8)) {
-				update_spinner_step++;
-				if (update_spinner_step >= 8) {
-					update_spinner_step = 0;
-				}
+				if (frame != update_spinner_step_frame && (tick - update_spinner_step_msec) > (1000 / 8)) {
+					update_spinner_step++;
+					if (update_spinner_step >= 8) {
+						update_spinner_step = 0;
+					}
 
-				update_spinner_step_msec = tick;
-				update_spinner_step_frame = frame + 1;
-
-				// Update the icon itself only when the spinner is visible.
-				if (_should_display_update_spinner()) {
+					update_spinner_step_msec = tick;
+					update_spinner_step_frame = frame + 1;
 					update_spinner->set_button_icon(theme->get_icon("Progress" + itos(update_spinner_step + 1), EditorStringName(EditorIcons)));
 				}
 			}
@@ -984,7 +999,7 @@ void EditorNode::_notification(int p_what) {
 			default_layout->set_value("docks", "dock_9", String(",").join(bottom_docks));
 
 			RenderingServer::get_singleton()->viewport_set_disable_2d(get_scene_root()->get_viewport_rid(), true);
-			RenderingServer::get_singleton()->viewport_set_environment_mode(get_viewport()->get_viewport_rid(), RenderingServer::VIEWPORT_ENVIRONMENT_DISABLED);
+			RenderingServer::get_singleton()->viewport_set_environment_mode(get_viewport()->get_viewport_rid(), RSE::VIEWPORT_ENVIRONMENT_DISABLED);
 			DisplayServer::get_singleton()->screen_set_keep_on(EDITOR_GET("interface/editor/keep_screen_on"));
 
 			feature_profile_manager->notify_changed();
@@ -1154,9 +1169,25 @@ void EditorNode::_notification(int p_what) {
 }
 
 void EditorNode::_update_update_spinner() {
-	update_spinner->set_visible(!RenderingServer::get_singleton()->canvas_item_get_debug_redraw() && _should_display_update_spinner());
+	bool should_display_spinner = false;
+	if (!RenderingServer::get_singleton()->canvas_item_get_debug_redraw()) {
+#ifdef DEV_ENABLED
+		const bool in_dev = true;
+#else
+		const bool in_dev = false;
+#endif
+		const int show_update_spinner_setting = EDITOR_GET("interface/editor/show_update_spinner");
+		should_display_spinner = (show_update_spinner_setting == 0 && in_dev) || show_update_spinner_setting == 1;
+	}
+	update_spinner->set_visible(should_display_spinner);
 
 	const bool update_continuously = EDITOR_GET("interface/editor/update_continuously");
+	OS::get_singleton()->set_low_processor_usage_mode(!update_continuously);
+
+	if (!update_spinner->is_visible()) {
+		return;
+	}
+
 	PopupMenu *update_popup = update_spinner->get_popup();
 	update_popup->set_item_checked(update_popup->get_item_index(SPINNER_UPDATE_CONTINUOUSLY), update_continuously);
 	update_popup->set_item_checked(update_popup->get_item_index(SPINNER_UPDATE_WHEN_CHANGED), !update_continuously);
@@ -1174,8 +1205,6 @@ void EditorNode::_update_update_spinner() {
 		update_spinner->set_tooltip_text(TTRC("Spins when the editor window redraws."));
 		update_spinner->set_self_modulate(Color(1, 1, 1));
 	}
-
-	OS::get_singleton()->set_low_processor_usage_mode(!update_continuously);
 }
 
 void EditorNode::_execute_upgrades() {
@@ -4447,7 +4476,8 @@ bool EditorNode::is_addon_plugin_enabled(const String &p_addon) const {
 void EditorNode::_remove_edited_scene(bool p_change_tab) {
 	// When scene gets closed no node is edited anymore, so make sure the editors are notified before nodes are freed.
 	hide_unused_editors(SceneTreeDock::get_singleton());
-	SceneTreeDock::get_singleton()->clear_previous_node_selection();
+	editor_selection->clear();
+	editor_selection->update(false);
 
 	int new_index = editor_data.get_edited_scene();
 	int old_index = new_index;
@@ -4688,6 +4718,14 @@ void EditorNode::setup_color_picker(ColorPicker *p_picker) {
 	p_picker->set_quick_open_callback(callable_mp(this, &EditorNode::_palette_quick_open_dialog));
 	p_picker->set_palette_saved_callback(callable_mp(EditorFileSystem::get_singleton(), &EditorFileSystem::update_file));
 	palette_file_selected_callback = callable_mp(p_picker, &ColorPicker::_quick_open_palette_file_selected);
+}
+
+void EditorNode::register_hdr_viewport(Viewport *p_viewport) {
+	const bool hdr_requested = GLOBAL_GET("display/window/hdr/request_hdr_output");
+	const bool hdr_2d_enabled = GLOBAL_GET("rendering/viewport/hdr_2d");
+	p_viewport->set_use_hdr_2d(hdr_2d_enabled || hdr_requested);
+
+	hdr_viewports.push_back(p_viewport->get_instance_id());
 }
 
 bool EditorNode::is_scene_open(const String &p_path) {
@@ -6023,16 +6061,6 @@ String EditorNode::_get_system_info() const {
 	}
 
 	return String(" - ").join(info);
-}
-
-bool EditorNode::_should_display_update_spinner() const {
-#ifdef DEV_ENABLED
-	const bool in_dev = true;
-#else
-	const bool in_dev = false;
-#endif
-	const int show_update_spinner_setting = EDITOR_GET("interface/editor/show_update_spinner");
-	return (show_update_spinner_setting == 0 && in_dev) || show_update_spinner_setting == 1;
 }
 
 Ref<Texture2D> EditorNode::_file_dialog_get_icon(const String &p_path) {
@@ -8619,13 +8647,13 @@ EditorNode::EditorNode() {
 	right_l_vsplit->set_vertical(true);
 	main_hsplit->add_child(right_l_vsplit);
 	{
-		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_UL, Rect2i(4, 0, 1, 3)));
+		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_UL, Rect2i(6, 0, 1, 3)));
 		dock_container->set_name("DockSlotRightUL");
 		right_l_vsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);
 	}
 	{
-		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_BL, Rect2i(4, 3, 1, 3)));
+		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_BL, Rect2i(6, 3, 1, 3)));
 		dock_container->set_name("DockSlotRightBL");
 		right_l_vsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);
@@ -8636,13 +8664,13 @@ EditorNode::EditorNode() {
 	right_r_vsplit->set_vertical(true);
 	main_hsplit->add_child(right_r_vsplit);
 	{
-		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_UR, Rect2i(5, 0, 1, 3)));
+		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_UR, Rect2i(7, 0, 1, 3)));
 		dock_container->set_name("DockSlotRightUR");
 		right_r_vsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);
 	}
 	{
-		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_BR, Rect2i(5, 3, 1, 3)));
+		DockTabContainer *dock_container = memnew(SideDockTabContainer(EditorDock::DOCK_SLOT_RIGHT_BR, Rect2i(7, 3, 1, 3)));
 		dock_container->set_name("DockSlotRightBR");
 		right_r_vsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);
@@ -8652,13 +8680,13 @@ EditorNode::EditorNode() {
 	bottom_hsplit->set_name("DockHSplitBottom");
 	main_vsplit->add_child(bottom_hsplit);
 	{
-		DockTabContainer *dock_container = memnew(BottomSideDockTabContainer(EditorDock::DOCK_SLOT_BOTTOM_L, Rect2i(0, 6, 3, 2)));
+		DockTabContainer *dock_container = memnew(BottomSideDockTabContainer(EditorDock::DOCK_SLOT_BOTTOM_L, Rect2i(0, 6, 4, 2)));
 		dock_container->set_name("DockSlotBottomL");
 		bottom_hsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);
 	}
 	{
-		DockTabContainer *dock_container = memnew(BottomSideDockTabContainer(EditorDock::DOCK_SLOT_BOTTOM_R, Rect2i(3, 6, 3, 2)));
+		DockTabContainer *dock_container = memnew(BottomSideDockTabContainer(EditorDock::DOCK_SLOT_BOTTOM_R, Rect2i(4, 6, 4, 2)));
 		dock_container->set_name("DockSlotBottomR");
 		bottom_hsplit->add_child(dock_container);
 		dock_slots.push_back(dock_container);

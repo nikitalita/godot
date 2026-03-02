@@ -31,6 +31,9 @@
 #include "visual_shader_nodes.h"
 #include "visual_shader_nodes.compat.inc"
 
+#include "core/object/class_db.h"
+#include "servers/rendering/rendering_server.h"
+
 ////////////// Vector Base
 
 VisualShaderNodeVectorBase::PortType VisualShaderNodeVectorBase::get_input_port_type(int p_port) const {

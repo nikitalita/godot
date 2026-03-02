@@ -476,6 +476,7 @@ private:
 	HashSet<String> textfile_extensions;
 	HashSet<String> other_file_extensions;
 	HashSet<FileDialog *> file_dialogs;
+	LocalVector<ObjectID> hdr_viewports;
 
 	Vector<Ref<EditorResourceConversionPlugin>> resource_conversion_plugins;
 	PrintHandlerList print_handler;
@@ -497,8 +498,6 @@ private:
 	static Vector<EditorNodeInitCallback> _init_callbacks;
 
 	String _get_system_info() const;
-
-	bool _should_display_update_spinner() const;
 
 	static void _dependency_error_report(const String &p_path, const String &p_dep, const String &p_type) {
 		DEV_ASSERT(Thread::get_caller_id() == Thread::get_main_id());
@@ -942,6 +941,7 @@ public:
 	bool is_multi_window_enabled() const;
 
 	void setup_color_picker(ColorPicker *p_picker);
+	void register_hdr_viewport(Viewport *p_viewport);
 
 	void request_instantiate_scene(const String &p_path);
 	void request_instantiate_scenes(const Vector<String> &p_files);

@@ -30,6 +30,7 @@
 
 #include "editor_dock_manager.h"
 
+#include "core/object/class_db.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/label.h"
@@ -325,6 +326,11 @@ void EditorDockManager::_move_dock(EditorDock *p_dock, Control *p_target, int p_
 			DockTabContainer *parent_tabs = Object::cast_to<DockTabContainer>(parent);
 			if (parent_tabs) {
 				p_dock->previous_tab_index = parent_tabs->get_tab_idx_from_control(p_dock);
+
+				// Swap to previous tab when closing current tab.
+				if (parent_tabs->get_current_tab() == p_dock->previous_tab_index) {
+					parent_tabs->set_current_tab(parent_tabs->get_previous_tab());
+				}
 			}
 			parent->set_block_signals(true);
 			parent->remove_child(p_dock);
@@ -339,6 +345,9 @@ void EditorDockManager::_move_dock(EditorDock *p_dock, Control *p_target, int p_
 		p_dock->is_open = false;
 		return;
 	}
+
+	// Prevent extra visibility signals from firing.
+	p_dock->hide();
 
 	DockTabContainer *dock_tab_container = Object::cast_to<DockTabContainer>(p_target);
 	if (p_target != closed_dock_parent) {
@@ -587,8 +596,6 @@ void EditorDockManager::close_dock(EditorDock *p_dock) {
 		parent_container->dock_closed(p_dock);
 	}
 
-	// Hide before moving to remove inconsistent signals.
-	p_dock->hide();
 	_move_dock(p_dock, closed_dock_parent);
 
 	_update_layout();
@@ -651,8 +658,10 @@ void EditorDockManager::_make_dock_visible(EditorDock *p_dock, bool p_grab_focus
 		tab_container->get_tab_bar()->grab_focus();
 	}
 
-	int tab_index = tab_container->get_tab_idx_from_control(p_dock);
-	tab_container->set_current_tab(tab_index);
+	if (!p_dock->is_visible_in_tree()) {
+		int tab_index = tab_container->get_tab_idx_from_control(p_dock);
+		tab_container->set_current_tab(tab_index);
+	}
 }
 
 void EditorDockManager::focus_dock(EditorDock *p_dock) {
@@ -918,6 +927,10 @@ DockContextPopup::DockContextPopup() {
 	dock_select_popup_vb->add_child(dock_select);
 	dock_select->connect("slot_clicked", callable_mp(this, &DockContextPopup::_slot_clicked));
 
+	Control *separator = memnew(Control);
+	separator->set_custom_minimum_size(Vector2(0, 8 * EDSCALE));
+	dock_select_popup_vb->add_child(separator);
+
 	make_float_button = memnew(Button);
 	make_float_button->set_text(TTRC("Make Floating"));
 	if (!EditorNode::get_singleton()->is_multi_window_enabled()) {
@@ -972,7 +985,7 @@ void DockSlotGrid::_update_rect_cache() {
 
 	// Temporarily hard-coded, until main screen is registered as a slot.
 	{
-		Rect2 rect = Rect2i(2, 0, 2, 4);
+		Rect2 rect = Rect2i(2, 0, 4, 4);
 		if (is_layout_rtl()) {
 			rect.position.x = GRID_SIZE.x - rect.position.x - rect.size.x;
 		}
