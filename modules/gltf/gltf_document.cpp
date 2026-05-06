@@ -1126,9 +1126,12 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 				}
 			}
 			{
-				Vector<Color> a = array[Mesh::ARRAY_COLOR];
-				if (a.size()) {
-					attributes["COLOR_0"] = GLTFAccessor::encode_new_accessor_from_colors(p_state, a, GLTFBufferView::TARGET_ARRAY_BUFFER);
+				Ref<BaseMaterial3D> material = import_mesh->get_surface_material(surface_i);
+				if (!material.is_valid() || material->get_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR)) {
+					Vector<Color> a = array[Mesh::ARRAY_COLOR];
+					if (a.size()) {
+						attributes["COLOR_0"] = GLTFAccessor::encode_new_accessor_from_colors(p_state, a, GLTFBufferView::TARGET_ARRAY_BUFFER);
+					}
 				}
 			}
 			HashMap<int, int> joint_i_to_bone_i;
