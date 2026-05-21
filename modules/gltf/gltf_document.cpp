@@ -1124,7 +1124,13 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 				}
 			}
 			{
-				Ref<BaseMaterial3D> material = import_mesh->get_surface_material(surface_i);
+				Ref<BaseMaterial3D> material;
+				if (surface_i < instance_materials.size()) {
+					material = instance_materials.get(surface_i);
+				}
+				if (material.is_null()) {
+					material = import_mesh->get_surface_material(surface_i);
+				}
 				if (!material.is_valid() || material->get_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR)) {
 					Vector<Color> a = array[Mesh::ARRAY_COLOR];
 					if (a.size()) {
