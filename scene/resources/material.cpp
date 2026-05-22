@@ -4047,6 +4047,12 @@ bool StandardMaterial3D::_set(const StringName &p_name, const Variant &p_value) 
 			set_flag(FLAG_INVERT_HEIGHTMAP, true);
 		}
 		return true;
+	} else if (p_name == "clearcoat_gloss") {
+		float gloss = p_value;
+		if (gloss > 0.0f) {
+			set_clearcoat_roughness(1.0f - gloss);
+		}
+		return true;
 	} else {
 		static const Pair<const char *, const char *> remaps[] = {
 			{ "flags_use_shadow_to_opacity", "shadow_to_opacity" },
