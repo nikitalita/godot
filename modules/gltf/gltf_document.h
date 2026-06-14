@@ -194,7 +194,7 @@ private:
 	void _assign_node_names(Ref<GLTFState> p_state);
 	template <typename T>
 	T _interpolate_track(const Vector<double> &p_times, const Vector<T> &p_values,
-			const float p_time,
+			const real_t p_time,
 			const GLTFAnimation::Interpolation p_interp);
 
 	Error _encode_accessors(Ref<GLTFState> p_state);
