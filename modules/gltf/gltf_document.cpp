@@ -1190,7 +1190,7 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 					attribs.resize(vertex_count);
 					for (int i = 0; i < vertex_count; i++) {
 						Vector4 weight_0(a[(i * JOINT_GROUP_SIZE) + 0], a[(i * JOINT_GROUP_SIZE) + 1], a[(i * JOINT_GROUP_SIZE) + 2], a[(i * JOINT_GROUP_SIZE) + 3]);
-						float divisor = weight_0.x + weight_0.y + weight_0.z + weight_0.w;
+						real_t divisor = weight_0.x + weight_0.y + weight_0.z + weight_0.w;
 						if (Math::is_zero_approx(divisor) || !Math::is_finite(divisor)) {
 							attribs.write[i] = Vector4(1, 0, 0, 0);
 						} else {
@@ -1215,7 +1215,7 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 						weight_1.y = a[vertex_i * weights_8_count + 5];
 						weight_1.z = a[vertex_i * weights_8_count + 6];
 						weight_1.w = a[vertex_i * weights_8_count + 7];
-						float divisor = weight_0.x + weight_0.y + weight_0.z + weight_0.w + weight_1.x + weight_1.y + weight_1.z + weight_1.w;
+						real_t divisor = weight_0.x + weight_0.y + weight_0.z + weight_0.w + weight_1.x + weight_1.y + weight_1.z + weight_1.w;
 						if (Math::is_zero_approx(divisor) || !Math::is_finite(divisor)) {
 							weights_0.write[vertex_i] = Vector4(1, 0, 0, 0);
 							weights_1.write[vertex_i] = Vector4(0, 0, 0, 0);
@@ -3713,7 +3713,7 @@ Error GLTFDocument::_serialize_animations(Ref<GLTFState> p_state) {
 					bool last = false;
 					Vector<real_t> weight_track;
 					while (true) {
-						float weight = _interpolate_track<real_t>(track.weight_tracks[track_idx].times,
+						real_t weight = _interpolate_track<real_t>(track.weight_tracks[track_idx].times,
 								track.weight_tracks[track_idx].values,
 								time,
 								track.weight_tracks[track_idx].interpolation);
@@ -4946,18 +4946,18 @@ void GLTFDocument::_generate_skeleton_bone_node_compat_4pt4(Ref<GLTFState> p_sta
 
 template <typename T>
 struct SceneFormatImporterGLTFInterpolate {
-	T lerp(const T &a, const T &b, float c) const {
+	T lerp(const T &a, const T &b, real_t c) const {
 		return a + (b - a) * c;
 	}
 
-	T catmull_rom(const T &p0, const T &p1, const T &p2, const T &p3, float t) {
-		const float t2 = t * t;
-		const float t3 = t2 * t;
+	T catmull_rom(const T &p0, const T &p1, const T &p2, const T &p3, real_t t) {
+		const real_t t2 = t * t;
+		const real_t t3 = t2 * t;
 
 		return 0.5f * ((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
 	}
 
-	T hermite(T start, T tan_start, T end, T tan_end, float t) {
+	T hermite(T start, T tan_start, T end, T tan_end, real_t t) {
 		/* Formula from the glTF 2.0 specification. */
 		const real_t t2 = t * t;
 		const real_t t3 = t2 * t;
@@ -4974,21 +4974,21 @@ struct SceneFormatImporterGLTFInterpolate {
 // thank you for existing, partial specialization
 template <>
 struct SceneFormatImporterGLTFInterpolate<Quaternion> {
-	Quaternion lerp(const Quaternion &a, const Quaternion &b, const float c) const {
+	Quaternion lerp(const Quaternion &a, const Quaternion &b, const real_t c) const {
 		ERR_FAIL_COND_V_MSG(!a.is_normalized(), Quaternion(), vformat("The quaternion \"a\" %s must be normalized.", a));
 		ERR_FAIL_COND_V_MSG(!b.is_normalized(), Quaternion(), vformat("The quaternion \"b\" %s must be normalized.", b));
 
 		return a.slerp(b, c).normalized();
 	}
 
-	Quaternion catmull_rom(const Quaternion &p0, const Quaternion &p1, const Quaternion &p2, const Quaternion &p3, const float c) {
+	Quaternion catmull_rom(const Quaternion &p0, const Quaternion &p1, const Quaternion &p2, const Quaternion &p3, const real_t c) {
 		ERR_FAIL_COND_V_MSG(!p1.is_normalized(), Quaternion(), vformat("The quaternion \"p1\" (%s) must be normalized.", p1));
 		ERR_FAIL_COND_V_MSG(!p2.is_normalized(), Quaternion(), vformat("The quaternion \"p2\" (%s) must be normalized.", p2));
 
 		return p1.slerp(p2, c).normalized();
 	}
 
-	Quaternion hermite(const Quaternion start, const Quaternion tan_start, const Quaternion end, const Quaternion tan_end, const float t) {
+	Quaternion hermite(const Quaternion start, const Quaternion tan_start, const Quaternion end, const Quaternion tan_end, const real_t t) {
 		ERR_FAIL_COND_V_MSG(!start.is_normalized(), Quaternion(), vformat("The start quaternion %s must be normalized.", start));
 		ERR_FAIL_COND_V_MSG(!end.is_normalized(), Quaternion(), vformat("The end quaternion %s must be normalized.", end));
 
@@ -4997,7 +4997,7 @@ struct SceneFormatImporterGLTFInterpolate<Quaternion> {
 };
 
 template <typename T>
-T GLTFDocument::_interpolate_track(const Vector<double> &p_times, const Vector<T> &p_values, const float p_time, const GLTFAnimation::Interpolation p_interp) {
+T GLTFDocument::_interpolate_track(const Vector<double> &p_times, const Vector<T> &p_values, const real_t p_time, const GLTFAnimation::Interpolation p_interp) {
 	ERR_FAIL_COND_V(p_values.is_empty(), T());
 	if (p_times.size() != (p_values.size() / (p_interp == GLTFAnimation::INTERP_CUBIC_SPLINE ? 3 : 1))) {
 		ERR_PRINT_ONCE("The interpolated values are not corresponding to its times.");
@@ -5022,7 +5022,7 @@ T GLTFDocument::_interpolate_track(const Vector<double> &p_times, const Vector<T
 				return p_values[p_times.size() - 1];
 			}
 
-			const float c = (p_time - p_times[idx]) / (p_times[idx + 1] - p_times[idx]);
+			const real_t c = (p_time - p_times[idx]) / (p_times[idx + 1] - p_times[idx]);
 
 			return interp.lerp(p_values[idx], p_values[idx + 1], c);
 		} break;
@@ -5042,7 +5042,7 @@ T GLTFDocument::_interpolate_track(const Vector<double> &p_times, const Vector<T
 				return p_values[1 + p_times.size() - 1];
 			}
 
-			const float c = (p_time - p_times[idx]) / (p_times[idx + 1] - p_times[idx]);
+			const real_t c = (p_time - p_times[idx]) / (p_times[idx + 1] - p_times[idx]);
 
 			return interp.catmull_rom(p_values[idx - 1], p_values[idx], p_values[idx + 1], p_values[idx + 3], c);
 		} break;
@@ -5053,8 +5053,8 @@ T GLTFDocument::_interpolate_track(const Vector<double> &p_times, const Vector<T
 				return p_values[(p_times.size() - 1) * 3 + 1];
 			}
 
-			const float td = (p_times[idx + 1] - p_times[idx]);
-			const float c = (p_time - p_times[idx]) / td;
+			const real_t td = (p_times[idx + 1] - p_times[idx]);
+			const real_t c = (p_time - p_times[idx]) / td;
 
 			const T &from = p_values[idx * 3 + 1];
 			const T tan_from = td * p_values[idx * 3 + 2];
