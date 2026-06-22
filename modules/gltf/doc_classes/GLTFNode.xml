@@ -83,6 +83,9 @@
 		<member name="skin" type="int" setter="set_skin" getter="get_skin" default="-1">
 			If this glTF node has a skin, the index of the [GLTFSkin] in the [GLTFState] that describes the skin's properties. If -1, this node does not have a skin.
 		</member>
+		<member name="weights" type="PackedFloat32Array" setter="set_weights" getter="get_weights" default="PackedFloat32Array()">
+			If this glTF node is a mesh with blend shapes, the weights of the blend shapes for this glTF node.
+		</member>
 		<member name="visible" type="bool" setter="set_visible" getter="get_visible" default="true">
 			If [code]true[/code], the GLTF node is visible. If [code]false[/code], the GLTF node is not visible. This is converted to the [member Node3D.visible] property in the Godot scene, and is exported to [code]KHR_node_visibility[/code] when [code]false[/code].
 		</member>
