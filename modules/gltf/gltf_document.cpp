@@ -2068,6 +2068,13 @@ static inline Ref<Image> _duplicate_and_decompress_image(const Ref<Image> &p_ima
 	Ref<Image> img = p_image->duplicate();
 	if (img->is_compressed()) {
 		img->decompress();
+		if (img->is_compressed()) {
+			img->clear_mipmaps();
+			img->decompress();
+			if (!img->is_compressed()) {
+				img->generate_mipmaps();
+			}
+		}
 	}
 	return img;
 }
