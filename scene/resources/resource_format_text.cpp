@@ -397,7 +397,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 			if (error) {
 				ERR_FAIL_COND_V_MSG(error != ERR_FILE_EOF, Ref<PackedScene>(), _get_error_string());
 				error = OK;
-				return p_current_scene;
+				return packed_scene;
 			}
 			// If it's a nested packed scene, and there's a resource after, we return without errors.
 		} else if (p_current_scene != packed_scene && (next_tag.name == "sub_resource" || next_tag.name == "resource")) {
@@ -608,6 +608,7 @@ Error ResourceLoaderText::load() {
 
 		int_resources[id] = res; // Always assign int resources.
 		if (do_assign) {
+			res->_start_load(SNAME("text"), format_version);
 			if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
 				res->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE);
 			} else {
@@ -692,6 +693,10 @@ Error ResourceLoaderText::load() {
 		if (!missing_resource_properties.is_empty()) {
 			res->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
 		}
+
+		if (do_assign) {
+			res->_finish_load(SNAME("text"), format_version);
+		}
 	}
 
 	if (is_scene) {
@@ -744,6 +749,8 @@ Error ResourceLoaderText::load() {
 				}
 			}
 		}
+
+		resource->_start_load(SNAME("text"), format_version);
 
 		Dictionary missing_resource_properties;
 
@@ -849,6 +856,7 @@ Error ResourceLoaderText::load() {
 		if (!missing_resource_properties.is_empty()) {
 			resource->set_meta(META_MISSING_RESOURCES, missing_resource_properties);
 		}
+		resource->_finish_load(SNAME("text"), format_version);
 
 		if (!is_scene) {
 			error = OK;
@@ -866,11 +874,16 @@ Error ResourceLoaderText::load() {
 			return error;
 		}
 
+		packed_scene->_start_load(SNAME("text"), format_version);
+
 		packed_scene = _parse_node_tag(packed_scene, rp);
 
 		if (packed_scene.is_null()) {
 			return error;
 		}
+
+		packed_scene->_finish_load(SNAME("text"), format_version);
+
 
 		error = OK;
 		//get it here
