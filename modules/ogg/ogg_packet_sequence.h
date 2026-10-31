@@ -47,7 +47,7 @@ class OggPacketSequence : public Resource {
 	Vector<Vector<PackedByteArray>> page_data;
 
 	// List of the granule position for each page.
-	Vector<uint64_t> page_granule_positions;
+	Vector<int64_t> page_granule_positions;
 
 	// The page after the current last page. Similar semantics to an end() iterator.
 	int64_t end_page = 0;
