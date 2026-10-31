@@ -158,6 +158,10 @@
 #endif // TOOLS_ENABLED && !GDSCRIPT_NO_LSP
 #endif // MODULE_GDSCRIPT_ENABLED
 
+#ifdef MODULE_GDSDECOMP_ENABLED
+#include "modules/gdsdecomp/utility/cli_helper.h"
+#endif
+
 /* Static members */
 
 // Singletons
@@ -1115,6 +1119,12 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	// Exit error code used in the `goto error` conditions.
 	// It's returned as the program exit code. ERR_HELP is special cased and handled as success (0).
 	Error exit_err = ERR_INVALID_PARAMETER;
+
+#ifdef MODULE_GDSDECOMP_ENABLED
+	if (gdre::modify_cli_args(&args, &user_args)) {
+		goto error;
+	}
+#endif
 
 	I = args.front();
 	while (I) {
@@ -4016,7 +4026,7 @@ void Main::setup_boot_logo() {
 #if defined(TOOLS_ENABLED) && !defined(NO_EDITOR_SPLASH)
 			Ref<Image> splash = (editor || project_manager) ? memnew(Image(boot_splash_editor_png)) : memnew(Image(boot_splash_png));
 #else
-			Ref<Image> splash = memnew(Image(boot_splash_png));
+			Ref<Image> splash = memnew(Image(boot_splash_png, sizeof(boot_splash_png)));
 #endif
 
 			MAIN_PRINT("Main: ClearColor");
@@ -4873,7 +4883,7 @@ int Main::start() {
 	}
 
 	if (DisplayServer::get_singleton()->has_feature(DisplayServerEnums::FEATURE_ICON) && !has_icon && OS::get_singleton()->get_bundle_icon_path().is_empty()) {
-		Ref<Image> icon = memnew(Image(app_icon_png));
+		Ref<Image> icon = memnew(Image(app_icon_png, sizeof(app_icon_png)));
 		DisplayServer::get_singleton()->set_icon(icon);
 	}
 
