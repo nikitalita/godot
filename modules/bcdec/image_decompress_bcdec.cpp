@@ -149,8 +149,8 @@ static void decompress_image(BCdecFormat format, const void *src, void *dst, con
 	const uint8_t *src_blocks = reinterpret_cast<const uint8_t *>(src);
 	uint8_t *dec_blocks = reinterpret_cast<uint8_t *>(dst);
 
-	const uint64_t aligned_width = (width + 3) & ~0x03;
-	const uint64_t aligned_height = (height + 3) & ~0x03;
+	const uint64_t aligned_width = (width + 3) & ~0x03ULL;
+	const uint64_t aligned_height = (height + 3) & ~0x03ULL;
 
 	if (width != aligned_width || height != aligned_height) {
 		// Decompress the mipmap in a 'safe' way, which involves starting from the top left.
