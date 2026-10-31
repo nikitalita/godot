@@ -2979,8 +2979,8 @@ void RenderingDeviceDriverVulkan::command_pipeline_barrier(
 	for (uint32_t i = 0; i < p_memory_barriers.size(); i++) {
 		vk_memory_barriers[i] = {};
 		vk_memory_barriers[i].sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		vk_memory_barriers[i].srcAccessMask = _rd_to_vk_access_flags(p_memory_barriers[i].src_access) & ~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-		vk_memory_barriers[i].dstAccessMask = _rd_to_vk_access_flags(p_memory_barriers[i].dst_access) & ~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+		vk_memory_barriers[i].srcAccessMask = _rd_to_vk_access_flags(p_memory_barriers[i].src_access) & (VkAccessFlags)~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+		vk_memory_barriers[i].dstAccessMask = _rd_to_vk_access_flags(p_memory_barriers[i].dst_access) & (VkAccessFlags)~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 	}
 
 	VkBufferMemoryBarrier *vk_buffer_barriers = ALLOCA_ARRAY(VkBufferMemoryBarrier, p_buffer_barriers.size());
@@ -2989,8 +2989,8 @@ void RenderingDeviceDriverVulkan::command_pipeline_barrier(
 		vk_buffer_barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 		vk_buffer_barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		vk_buffer_barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		vk_buffer_barriers[i].srcAccessMask = _rd_to_vk_access_flags(p_buffer_barriers[i].src_access) & ~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-		vk_buffer_barriers[i].dstAccessMask = _rd_to_vk_access_flags(p_buffer_barriers[i].dst_access) & ~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+		vk_buffer_barriers[i].srcAccessMask = _rd_to_vk_access_flags(p_buffer_barriers[i].src_access) & (VkAccessFlags)~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+		vk_buffer_barriers[i].dstAccessMask = _rd_to_vk_access_flags(p_buffer_barriers[i].dst_access) & (VkAccessFlags)~VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 		vk_buffer_barriers[i].buffer = ((const BufferInfo *)p_buffer_barriers[i].buffer.id)->vk_buffer;
 		vk_buffer_barriers[i].offset = p_buffer_barriers[i].offset;
 		vk_buffer_barriers[i].size = p_buffer_barriers[i].size;
