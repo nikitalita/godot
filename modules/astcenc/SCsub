@@ -43,7 +43,7 @@ env_thirdparty = env_astcenc.Clone()
 env_thirdparty.disable_warnings()
 
 # Build the encoder only for editor builds
-astc_encoder = env.editor_build
+astc_encoder = env.editor_build or env["astcenc_export_templates"]
 
 if not astc_encoder:
     env_thirdparty.Append(CPPDEFINES=[("ASTCENC_DECOMPRESS_ONLY")])
@@ -55,6 +55,8 @@ env.modules_sources += thirdparty_obj
 
 module_obj = []
 
+if astc_encoder:
+    env_astcenc.Append(CPPDEFINES=["ASTCENC_COMPRESS_ENABLED"])
 env_astcenc.add_source_files(module_obj, "*.cpp")
 env.modules_sources += module_obj
 
