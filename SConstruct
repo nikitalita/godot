@@ -951,12 +951,11 @@ elif env.msvc:
     env.Append(CXXFLAGS=["/EHsc"])
 
 # Make sinf/cosf etc. behave the same in every build type and on every platform.
-# Clang defaults to -fno-math-errno on Darwin, Android, musl, the BSDs and Emscripten. Without errno it can merge
-# adjacent sinf(x)/cosf(x) calls into one combined libm call whose result can differ by 1 ULP from cosf(x):
-# __sincosf_stret on Apple platforms, sincosf on Android. (Clang currently does not do this for musl, the BSDs
-# or Emscripten, but keeping errno gives all platforms the same behavior.)
-# MSVC and clang-cl are skipped: errno is already on there, and cl.exe has no such flag.
-if not env.msvc:
+# Clang defaults to -fno-math-errno on Darwin; without errno it can merge adjacent sinf(x)/cosf(x)
+# calls into one combined `__sincosf_stret` call whose result can differ by 1 ULP from cosf(x).
+# Android, musl, the BSDs and Emscripten also defaults to off, and are not affected by the above, but
+# keeping errno gives all platforms the same behavior.
+if not env.msvc:  # MSVC and clang-cl are skipped: errno is already on there, and cl.exe has no such flag.
     if env["math_errno"]:
         env.Append(CCFLAGS=["-fmath-errno"])
     else:

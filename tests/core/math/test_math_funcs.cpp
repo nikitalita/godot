@@ -31,9 +31,7 @@
 #include "core/math/math_funcs_binary.h"
 #include "tests/test_macros.h"
 
-#ifndef __NO_MATH_ERRNO__
 #include <cmath>
-#endif // __NO_MATH_ERRNO__
 
 TEST_FORCE_LINK(test_math_funcs)
 
@@ -700,10 +698,6 @@ TEST_CASE("[Math] division_no_overflow/modulo_no_overflow") {
 	CHECK(Math::modulo_no_overflow(num, den) == 0);
 }
 
-// Only meaningful when the compiler keeps errno for math functions (the `math_errno` SCons option, on by default).
-// Compilers define `__NO_MATH_ERRNO__` when errno is off, which allows `sinf`/`cosf` to be fused, so skip then.
-#ifndef __NO_MATH_ERRNO__
-
 static uint32_t float_bits(float p_value) {
 	uint32_t bits;
 	memcpy(&bits, &p_value, sizeof(bits));
@@ -726,7 +720,13 @@ static _NO_INLINE_ void sin_cos_and_reference(float p_x, float &r_sin, float &r_
 	r_ref_cos = ref_cos(p_x);
 }
 
-TEST_CASE("[Math] sin and cos on the same float argument match separate libm calls") {
+#ifndef SIN_COS_MATH_ERRNO_TESTS_MAY_FAIL
+#define SIN_COS_TEST_CASE(x) TEST_CASE(x)
+#else
+#define SIN_COS_TEST_CASE(x) TEST_CASE_MAY_FAIL(x)
+#endif
+
+SIN_COS_TEST_CASE("[Math] sin and cos on the same float argument match separate libm calls") {
 	// Bit patterns of the inputs, laundered through volatile so nothing is constant-folded.
 	// These are known values that are known to produce different results between the two calls.
 	static volatile uint32_t input_bits[] = { 0x400735cf, 0x3f5613d6, 0x3f800000, 0x40490fdb, 0xbf9a2e15, 0x41457ae1, 0x3a83126f };
@@ -742,7 +742,5 @@ TEST_CASE("[Math] sin and cos on the same float argument match separate libm cal
 		CHECK_MESSAGE(float_bits(c) == float_bits(ref_c), "cos(", x, ") bits differ from cosf()");
 	}
 }
-
-#endif // __NO_MATH_ERRNO__
 
 } // namespace TestMathFuncs
