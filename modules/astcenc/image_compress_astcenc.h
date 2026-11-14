@@ -32,7 +32,7 @@
 
 #include "core/io/image.h"
 
-#ifdef TOOLS_ENABLED
+#ifdef ASTCENC_COMPRESS_ENABLED
 void _compress_astc(Image *r_img, Image::UsedChannels p_channels, Image::CompressProfile p_profile);
 #endif
 
