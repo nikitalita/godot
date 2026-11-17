@@ -35,7 +35,7 @@
 
 #include <astcenc.h>
 
-#ifdef TOOLS_ENABLED
+#ifdef ASTCENC_COMPRESS_ENABLED
 Image::CompressProfile _pick_profile_from_channels(Image::UsedChannels p_channels) {
 	switch (p_channels) {
 		case Image::USED_CHANNELS_L:
@@ -190,7 +190,7 @@ void _compress_astc(Image *r_img, Image::UsedChannels p_channels, Image::Compres
 
 	print_verbose(vformat("astcenc: Encoding took %d ms.", OS::get_singleton()->get_ticks_msec() - start_time));
 }
-#endif // TOOLS_ENABLED
+#endif // ASTCENC_COMPRESS_ENABLED
 
 void _decompress_astc(Image *r_img) {
 	const uint64_t start_time = OS::get_singleton()->get_ticks_msec();
