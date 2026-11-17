@@ -202,6 +202,10 @@ def configure(env: "SConsEnvironment"):
             env.Append(CPPDEFINES=["TSAN_ENABLED"])
             env.Append(CCFLAGS=["-fsanitize=thread"])
             env.Append(LINKFLAGS=["-fsanitize=thread"])
+            if env["linker"] == "gold":
+                env.Append(LINKFLAGS=["-rdynamic"])
+            else:
+                env.Append(LINKFLAGS=["-Wl,--export-dynamic-symbol=dlvsym"])
 
         if env["use_msan"] and env["use_llvm"]:
             env.Append(CPPDEFINES=["MSAN_ENABLED"])

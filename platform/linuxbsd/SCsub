@@ -18,6 +18,11 @@ if env["library_type"] == "executable":
 else:
     common_linuxbsd += ["libgodot_linuxbsd.cpp"]
 
+if env["use_tsan"]:
+    env_tsan_no_instrument = env.Clone()
+    env_tsan_no_instrument.Append(CCFLAGS=["-fno-sanitize=thread"])
+    common_linuxbsd += env_tsan_no_instrument.Object("tsan_dlvsym_linuxbsd.cpp")
+
 if env["use_sowrap"]:
     common_linuxbsd.append("xkbcommon-so_wrap.c")
 
