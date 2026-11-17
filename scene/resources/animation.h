@@ -149,6 +149,9 @@ private:
 	struct PositionTrack : public Track {
 		LocalVector<TKey<Vector3>> positions;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		PositionTrack() { type = TYPE_POSITION_3D; }
 	};
 
@@ -157,6 +160,9 @@ private:
 	struct RotationTrack : public Track {
 		LocalVector<TKey<Quaternion>> rotations;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		RotationTrack() { type = TYPE_ROTATION_3D; }
 	};
 
@@ -165,6 +171,9 @@ private:
 	struct ScaleTrack : public Track {
 		LocalVector<TKey<Vector3>> scales;
 		int32_t compressed_track = -1;
+#ifndef DISABLE_DEPRECATED
+		bool relative_to_rest = false;
+#endif
 		ScaleTrack() { type = TYPE_SCALE_3D; }
 	};
 
@@ -335,6 +344,13 @@ private:
 	bool capture_included = false;
 	void _check_capture_included();
 
+	void _track_update_hash(int p_track);
+
+#ifndef DISABLE_DEPRECATED
+	bool _started_load = false;
+	HashMap<int, Dictionary> _transform_track_data;
+#endif
+
 	/* Animation compression page format (version 1):
 	 *
 	 * Animation uses bitwidth based compression separated into small pages. The intention is that pages fit easily in the cache, so decoding is cache efficient.
@@ -494,7 +510,11 @@ public:
 	double track_get_key_time(int p_track, int p_key_idx) const;
 	real_t track_get_key_transition(int p_track, int p_key_idx) const;
 	bool track_is_compressed(int p_track) const;
-
+#ifndef DISABLE_DEPRECATED
+	bool has_tracks_relative_to_rest() const;
+	bool track_is_relative_to_rest(int p_track) const;
+	void track_set_relative_to_rest(int p_track, bool p_relative_to_rest);
+#endif
 	int position_track_insert_key(int p_track, double p_time, const Vector3 &p_position);
 	Error position_track_get_key(int p_track, int p_key, Vector3 *r_position) const;
 	Error try_position_track_interpolate(int p_track, double p_time, Vector3 *r_interpolation, bool p_backward = false) const;
@@ -608,6 +628,9 @@ public:
 	bool editor_is_folding_dirty() const { return folded_groups_dirty; }
 	void editor_set_folding_dirty(bool p_dirty) { folded_groups_dirty = p_dirty; }
 #endif // TOOLS_ENABLED
+
+	virtual void _start_load(const StringName &p_res_format_type, int p_res_format_version) override;
+	virtual void _finish_load(const StringName &p_res_format_type, int p_res_format_version) override;
 
 	// Helper functions for Rotation.
 	static double interpolate_via_rest(double p_from, double p_to, double p_weight, double p_rest = 0.0); // Deterministic slerp to prevent to cross the inverted rest axis.
