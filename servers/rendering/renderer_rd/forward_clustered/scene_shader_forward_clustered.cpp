@@ -212,7 +212,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	stencil_enabled = stencil_referencei != -1;
 	stencil_flags = stencil_readi | stencil_writei | stencil_write_depth_faili;
 	stencil_compare = StencilCompare(stencil_comparei);
-	stencil_reference = stencil_referencei;
+	stencil_reference = (uint32_t)stencil_referencei;
 
 #if 0
 	print_line("**compiling shader:");
